@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420" fill="none">
+  <defs>
+    <linearGradient id="v-logo-grad" x1="88" y1="60" x2="348" y2="312" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#38bdf8" />
+      <stop offset="50%" stopColor="#06b6d4" />
+      <stop offset="100%" stopColor="#14b8a6" />
+    </linearGradient>
+  </defs>
+  <!-- Emblem from reference app.jpg -->
+  <g fill="url(#v-logo-grad)">
+    <!-- Pillar -->
+    <polygon points="88,264 88,104 132,60 132,220" />
+    <!-- Chevron & Base -->
+    <polygon points="88,312 312,88 348,88 160,276 348,276 312,312" />
+  </g>
+  <!-- Wordmark: VERILΛNCE (with Chevron A) -->
+  <text 
+    x="200" 
+    y="390" 
+    text-anchor="middle" 
+    fill="#ffffff" 
+    font-family="'Space Grotesk', system-ui, -apple-system, sans-serif" 
+    font-weight="700" 
+    font-size="30" 
+    letter-spacing="0.36em"
+  >VERILΛNCE</text>
+</svg>

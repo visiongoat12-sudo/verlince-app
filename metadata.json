@@ -1,0 +1,6 @@
+{
+  "name": "VERILANCE",
+  "description": "Anti-scam freelancer escrow platform featuring View Once media previewing, anti-screen capture guards, and automated smart contracts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420" fill="none">
+  <!-- Solid Black Emblem as shown in reference app.jpg -->
+  <g fill="#0a0e17">
+    <!-- Pillar -->
+    <polygon points="88,264 88,104 132,60 132,220" />
+    <!-- Chevron & Base -->
+    <polygon points="88,312 312,88 348,88 160,276 348,276 312,312" />
+  </g>
+  <!-- Wordmark: VERILΛNCE -->
+  <text 
+    x="200" 
+    y="390" 
+    text-anchor="middle" 
+    fill="#0a0e17" 
+    font-family="'Space Grotesk', system-ui, -apple-system, sans-serif" 
+    font-weight="700" 
+    font-size="30" 
+    letter-spacing="0.36em"
+  >VERILΛNCE</text>
+</svg>

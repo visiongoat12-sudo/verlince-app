@@ -1,0 +1,25 @@
+
+<svg viewBox="0 0 400 400" width="800" height="800" xmlns="http://www.w3.org/2000/svg" style="background:white">
+  <!-- Version 1: Clean mathematical geometry matching the brand -->
+  <!-- Bounding box: 80 to 320 in X, 60 to 300 in Y -->
+  <g fill="#0a0e17">
+    <!-- Left vertical sheared pillar -->
+    <!-- Width: 42. Left: 88, Right: 130. Height: 154 -->
+    <polygon points="88,110 88,230 130,192 130,72" />
+    
+    <!-- Base + Diagonal Chevron -->
+    <!-- Bottom-left sharp point at (88, 276) -->
+    <!-- Outer diagonal rises to (288, 96) -->
+    <!-- Tip cut at (288, 96) to (260, 96) -->
+    <!-- Inner diagonal goes down to (170, 244) -->
+    <!-- Inner horizontal goes to (264, 244) -->
+    <!-- End cut to (284, 276) -->
+    <!-- Bottom horizontal to (88, 276) -->
+    <polygon points="88,276 288,96 260,96 170,244 264,244 284,276" />
+  </g>
+  
+  <!-- Wordmark: V E R I L A N C E with chevron A -->
+  <g fill="#0a0e17" style="font-family: Space Grotesk, sans-serif; font-weight: 700; font-size: 26px; letter-spacing: 0.42em;">
+    <text x="200" y="360" text-anchor="middle">VERILANCE</text>
+  </g>
+</svg>
