@@ -28,6 +28,7 @@ import {
   Filter
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
+import { subscribeDeals } from '../lib/firebase';
 
 interface TransactionItem {
   id: string;
@@ -53,35 +54,36 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   onOpenAuthGate,
   onOpenEditModal,
 }) => {
-  // 1. HERO PROFILE STATE
-  const [fullName, setFullName] = useState(currentUser?.name || 'Kabir Verma');
-  const [username, setUsername] = useState(currentUser?.username || 'kabir_vfx');
-  const [email, setEmail] = useState(currentUser?.email || 'kabir.vfx@verilance.io');
-  const [recoveryEmail, setRecoveryEmail] = useState(currentUser?.recoveryEmail || 'kabir.recovery@gmail.com');
+  // 1. HERO PROFILE STATE (Dynamic from real user)
+  const [fullName, setFullName] = useState(currentUser?.name || '');
+  const [username, setUsername] = useState(currentUser?.username || '');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [recoveryEmail, setRecoveryEmail] = useState(currentUser?.recoveryEmail || '');
   const [role, setRole] = useState<UserRole>(currentUser?.role || 'editor'); // 'editor' vs 'creator'
   const [isVerifiedPro, setIsVerifiedPro] = useState(currentUser?.hasVerifiedBadge ?? false);
-  const [kycStatus, setKycStatus] = useState<'unverified' | 'pending' | 'verified'>(currentUser?.kycStatus || 'verified');
-  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80');
+  const [kycStatus, setKycStatus] = useState<'unverified' | 'pending' | 'verified'>(currentUser?.kycStatus || 'unverified');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80');
 
   // Keep state synced with currentUser if it changes
   React.useEffect(() => {
     if (currentUser) {
-      setFullName(currentUser.name);
+      setFullName(currentUser.name || '');
       if (currentUser.username) setUsername(currentUser.username);
-      setEmail(currentUser.email);
+      setEmail(currentUser.email || '');
       if (currentUser.recoveryEmail) setRecoveryEmail(currentUser.recoveryEmail);
-      setRole(currentUser.role);
-      setIsVerifiedPro(currentUser.hasVerifiedBadge);
-      setKycStatus(currentUser.kycStatus);
-      setAvatarUrl(currentUser.avatar);
+      setRole(currentUser.role || 'editor');
+      setIsVerifiedPro(currentUser.hasVerifiedBadge ?? false);
+      setKycStatus(currentUser.kycStatus || 'unverified');
+      if (currentUser.avatar) setAvatarUrl(currentUser.avatar);
+      if (currentUser.name) setLegalName(currentUser.name);
     }
   }, [currentUser]);
 
   // 2. PERSONAL MEMORANDA (Verification Form) STATE
-  const [legalName, setLegalName] = useState('Kabir Verma');
-  const [idType, setIdType] = useState('Aadhaar Card');
-  const [portfolioLink, setPortfolioLink] = useState('https://youtube.com/@kabiredits_official');
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [legalName, setLegalName] = useState(currentUser?.name || '');
+  const [idType, setIdType] = useState('Govt Photo ID');
+  const [portfolioLink, setPortfolioLink] = useState('');
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(currentUser?.idDocumentName || null);
   const [uploadedFileSize, setUploadedFileSize] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [verificationSubmittedDate, setVerificationSubmittedDate] = useState<string | null>(null);
@@ -89,63 +91,44 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   // 3. CHECKOUT MODAL STATE
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'paypal'>('upi');
-  const [upiId, setUpiId] = useState('kabir@oksbi');
-  const [cardNumber, setCardNumber] = useState('•••• •••• •••• 4291');
+  const [upiId, setUpiId] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
   const [showCelebrationBanner, setShowCelebrationBanner] = useState(false);
 
-  // 4. TRANSACTION HISTORY TABLE DATA
-  const [transactions, setTransactions] = useState<TransactionItem[]>([
-    {
-      id: 'tx-1',
-      dealId: 'TRW-849201',
-      date: '18 Sep 2026',
-      counterpartName: 'Aarav Sharma',
-      counterpartRole: 'Content Creator',
-      amount: 2000,
-      status: 'Escrow Released',
-      rating: 5.0,
-    },
-    {
-      id: 'tx-2',
-      dealId: 'TRW-729104',
-      date: '12 Sep 2026',
-      counterpartName: 'TechVision Studios',
-      counterpartRole: 'Production Agency',
-      amount: 14500,
-      status: 'Completed',
-      rating: 4.9,
-    },
-    {
-      id: 'tx-3',
-      dealId: 'TRW-619420',
-      date: '29 Aug 2026',
-      counterpartName: 'NeonVerse Editing Crew',
-      counterpartRole: 'Creator Collective',
-      amount: 8000,
-      status: 'Escrow Released',
-      rating: 5.0,
-    },
-    {
-      id: 'tx-4',
-      dealId: 'TRW-504192',
-      date: '15 Aug 2026',
-      counterpartName: 'Priya Creative Media',
-      counterpartRole: 'Channel Manager',
-      amount: 22000,
-      status: 'Completed',
-      rating: 4.8,
-    },
-    {
-      id: 'tx-5',
-      dealId: 'TRW-482019',
-      date: '02 Aug 2026',
-      counterpartName: 'Devansh Motovlogs',
-      counterpartRole: 'YouTuber',
-      amount: 4500,
-      status: 'Disputed',
-      rating: 4.2,
-    },
-  ]);
+  // 4. TRANSACTION HISTORY TABLE DATA (Dynamic from Firestore)
+  const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+
+  // Subscribe to real deals from Firestore
+  React.useEffect(() => {
+    const unsubscribe = subscribeDeals((liveDeals) => {
+      const txs: TransactionItem[] = liveDeals.map((d) => {
+        let statusDisplay: TransactionItem['status'] = 'Secured in Escrow';
+        if (d.status === 'released') statusDisplay = 'Escrow Released';
+        else if (d.status === 'disputed') statusDisplay = 'Disputed';
+        else if (d.status === 'work_submitted') statusDisplay = 'Completed';
+
+        const isUserSender = currentUser?.name === d.senderName;
+        const counterpartName = isUserSender ? d.receiverName : d.senderName;
+        const counterpartRole = isUserSender ? 'Receiver / Freelancer' : 'Payer / Client';
+
+        return {
+          id: d.id,
+          dealId: d.id,
+          date: d.createdAt 
+            ? new Date(d.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) 
+            : 'Recently',
+          counterpartName: counterpartName || 'Escrow Partner',
+          counterpartRole: counterpartRole,
+          amount: d.amount,
+          status: statusDisplay,
+          rating: 5.0,
+        };
+      });
+      setTransactions(txs);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   const [tableFilter, setTableFilter] = useState<'all' | 'Completed' | 'Escrow Released' | 'Disputed'>('all');
 
@@ -730,69 +713,83 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {filteredTransactions.map((tx) => (
-                <tr 
-                  key={tx.id}
-                  className="hover:bg-white/[0.02] transition-colors group"
-                >
-                  {/* Date */}
-                  <td className="py-4 px-4 text-slate-300 font-mono whitespace-nowrap">
-                    {tx.date}
-                  </td>
-
-                  {/* Deal ID */}
-                  <td className="py-4 px-4 font-mono font-semibold text-cyan-400 whitespace-nowrap">
-                    #{tx.dealId}
-                  </td>
-
-                  {/* Client / Freelancer Name */}
-                  <td className="py-4 px-4">
-                    <div className="font-bold text-white text-xs">
-                      {tx.counterpartName}
+              {filteredTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 px-4 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-2 text-slate-400">
+                      <Clock className="w-8 h-8 text-slate-600" />
+                      <p className="text-sm font-medium text-slate-300">No escrow transactions recorded yet</p>
+                      <p className="text-xs text-slate-500 max-w-md">
+                        Once deals are locked and milestones are completed or released on the platform, your cryptographically verified ledger will automatically display them here.
+                      </p>
                     </div>
-                    <div className="text-[10px] text-slate-500">
-                      {tx.counterpartRole}
-                    </div>
-                  </td>
-
-                  {/* Amount */}
-                  <td className="py-4 px-4 font-bold text-white text-xs font-mono whitespace-nowrap">
-                    ₹{tx.amount.toLocaleString('en-IN')}
-                  </td>
-
-                  {/* Rating */}
-                  <td className="py-4 px-4 whitespace-nowrap">
-                    <div className="flex items-center gap-1 text-amber-400 font-semibold">
-                      <Star className="w-3 h-3 fill-amber-400" />
-                      <span>{tx.rating}</span>
-                    </div>
-                  </td>
-
-                  {/* Status */}
-                  <td className="py-4 px-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                      tx.status === 'Completed'
-                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                        : tx.status === 'Escrow Released'
-                        ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
-                        : tx.status === 'Disputed'
-                        ? 'bg-red-500/10 text-red-300 border-red-500/30'
-                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${
-                        tx.status === 'Completed'
-                          ? 'bg-emerald-400'
-                          : tx.status === 'Escrow Released'
-                          ? 'bg-cyan-400'
-                          : tx.status === 'Disputed'
-                          ? 'bg-red-400'
-                          : 'bg-amber-400'
-                      }`} />
-                      <span>{tx.status}</span>
-                    </span>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredTransactions.map((tx) => (
+                  <tr 
+                    key={tx.id}
+                    className="hover:bg-white/[0.02] transition-colors group"
+                  >
+                    {/* Date */}
+                    <td className="py-4 px-4 text-slate-300 font-mono whitespace-nowrap">
+                      {tx.date}
+                    </td>
+
+                    {/* Deal ID */}
+                    <td className="py-4 px-4 font-mono font-semibold text-cyan-400 whitespace-nowrap">
+                      #{tx.dealId}
+                    </td>
+
+                    {/* Client / Freelancer Name */}
+                    <td className="py-4 px-4">
+                      <div className="font-bold text-white text-xs">
+                        {tx.counterpartName}
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        {tx.counterpartRole}
+                      </div>
+                    </td>
+
+                    {/* Amount */}
+                    <td className="py-4 px-4 font-bold text-white text-xs font-mono whitespace-nowrap">
+                      ₹{tx.amount.toLocaleString('en-IN')}
+                    </td>
+
+                    {/* Rating */}
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1 text-amber-400 font-semibold">
+                        <Star className="w-3 h-3 fill-amber-400" />
+                        <span>{tx.rating}</span>
+                      </div>
+                    </td>
+
+                    {/* Status */}
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                        tx.status === 'Completed'
+                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                          : tx.status === 'Escrow Released'
+                          ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                          : tx.status === 'Disputed'
+                          ? 'bg-red-500/10 text-red-300 border-red-500/30'
+                          : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          tx.status === 'Completed'
+                            ? 'bg-emerald-400'
+                            : tx.status === 'Escrow Released'
+                            ? 'bg-cyan-400'
+                            : tx.status === 'Disputed'
+                            ? 'bg-red-400'
+                            : 'bg-amber-400'
+                        }`} />
+                        <span>{tx.status}</span>
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

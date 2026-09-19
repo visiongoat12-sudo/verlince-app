@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   UserProfile, 
   DealAgreement, 
@@ -37,6 +37,7 @@ import {
   Search,
   LogOut
 } from 'lucide-react';
+import { fetchUserFromDB, saveUserToDB } from './lib/firebase';
 
 export default function App() {
   // Navigation View State: 'marketplace' (Default Upwork-inspired layout) vs 'profile' vs 'escrow'
@@ -86,11 +87,49 @@ export default function App() {
     };
   });
 
+  // Sync real profile from Firestore on load if available
+  useEffect(() => {
+    if (currentUser?.id) {
+      fetchUserFromDB(currentUser.id)
+        .then((liveDoc) => {
+          if (liveDoc) {
+            setCurrentUser(liveDoc);
+            try {
+              localStorage.setItem('verilance_auth_user', JSON.stringify(liveDoc));
+            } catch (e) {
+              console.warn(e);
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('[App] Realtime user fetch notice:', err);
+        });
+    }
+  }, []);
+
   // Auth Handlers
   const handleAuthSuccess = (authenticatedUser: UserProfile) => {
     setCurrentUser(authenticatedUser);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
+    saveUserToDB(authenticatedUser).catch(err => {
+      console.error('[App] Failed to save user on auth success:', err);
+    });
+  };
+
+  const handleUpdateProfile = (updated: Partial<UserProfile>) => {
+    setCurrentUser((prev) => {
+      const merged: UserProfile = { ...prev, ...updated };
+      try {
+        localStorage.setItem('verilance_auth_user', JSON.stringify(merged));
+      } catch (e) {
+        console.warn('LocalStorage save warning:', e);
+      }
+      saveUserToDB(merged).catch(err => {
+        console.error('[App] Failed to persist profile updates to Firestore:', err);
+      });
+      return merged;
+    });
   };
 
   const handleSignOut = () => {
@@ -759,7 +798,7 @@ export default function App() {
         <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10]">
           <ProfileVerificationDashboard 
             currentUser={currentUser}
-            onUpdateProfile={(updated) => setCurrentUser((prev) => ({ ...prev, ...updated }))}
+            onUpdateProfile={handleUpdateProfile}
             onOpenAuthGate={handleSignOut}
             onOpenEditModal={() => setIsOnboardingOpen(true)}
           />
@@ -870,7 +909,7 @@ export default function App() {
         isOpen={isOnboardingOpen}
         onClose={() => setIsOnboardingOpen(false)}
         user={currentUser}
-        onSaveProfile={(updated) => setCurrentUser((prev) => ({ ...prev, ...updated }))}
+        onSaveProfile={handleUpdateProfile}
       />
 
       {/* The 🤝 Deal Icon & Transaction Form Modal */}

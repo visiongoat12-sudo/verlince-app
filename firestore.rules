@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Connection test document
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Users collection: users can read their own or others' public profile info
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null || true; // Allowed for web client app
+    }
+
+    // Public Marketplace Creator listings
+    match /creators/{creatorId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Deals collection
+    match /deals/{dealId} {
+      allow read, write: if true;
+    }
+  }
+}

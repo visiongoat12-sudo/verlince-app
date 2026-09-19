@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useId } from 'react';
 import { UserProfile, UserRole } from '../types';
 import { VerilanceLogo } from './VerilanceLogo';
+import { saveUserToDB, checkUsernameInDB } from '../lib/firebase';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -26,20 +27,14 @@ import {
   EyeOff
 } from 'lucide-react';
 
-// Pre-existing taken usernames in the VERILANCE registry to enforce strict uniqueness
+// System reserved handles in the VERILANCE ledger
 const TAKEN_USERNAMES = new Set([
-  'john_doe',
-  'kabir_vfx',
-  'aarav_tech',
-  'rohit_visuals',
-  'priya_films',
   'verilance',
   'admin',
   'vakra_ai',
-  'supereditor',
-  'creator_hub',
-  'alex_edit',
-  'rahul_motion'
+  'support',
+  'system',
+  'root'
 ]);
 
 interface AuthOnboardingModalProps {
@@ -134,8 +129,18 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
     setUsernameStatus('checking');
     setUsernameFeedback('Verifying unique handle across VERILANCE ledger...');
 
-    const timer = setTimeout(() => {
-      if (TAKEN_USERNAMES.has(trimmed) && trimmed !== currentUser?.username?.toLowerCase()) {
+    const timer = setTimeout(async () => {
+      let isTaken = TAKEN_USERNAMES.has(trimmed) && trimmed !== currentUser?.username?.toLowerCase();
+      
+      if (!isTaken) {
+        try {
+          isTaken = await checkUsernameInDB(trimmed, currentUser?.id);
+        } catch (e) {
+          console.warn('[UsernameCheck] Firestore lookup fallback', e);
+        }
+      }
+
+      if (isTaken) {
         setUsernameStatus('taken');
         setUsernameFeedback('Username already taken, please choose another.');
         // Generate 3 unique alternatives
@@ -315,6 +320,12 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
     } catch (e) {
       console.warn('Storage failed', e);
     }
+    
+    // Asynchronously persist to real live Firestore database
+    saveUserToDB(userObj).catch(err => {
+      console.error('[Auth] Failed to sync user with Firestore database:', err);
+    });
+
     onAuthSuccess(userObj);
   };
 

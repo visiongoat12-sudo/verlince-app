@@ -35,21 +35,24 @@ export const DealModal: React.FC<DealModalProps> = ({
   clientName,
   freelancerName,
 }) => {
+  // Compute default deadline (7 days from today)
+  const defaultDeadline = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+
   // Sender = Client paying funds; Receiver = Freelancer receiving funds
   const [senderRole, setSenderRole] = useState<'client' | 'freelancer'>(
     initialValues?.senderRole || 'client'
   );
   const [serviceType, setServiceType] = useState(
-    initialValues?.serviceType || 'YouTube Video Editing'
+    initialValues?.serviceType || ''
   );
   const [amountRaw, setAmountRaw] = useState<string>(
-    initialValues?.amount ? String(initialValues.amount) : '2000'
+    initialValues?.amount ? String(initialValues.amount) : ''
   );
   const [deadline, setDeadline] = useState(
-    initialValues?.deadline || '2026-09-25'
+    initialValues?.deadline || defaultDeadline
   );
   const [description, setDescription] = useState(
-    initialValues?.description || 'Edit 10-minute video, includes up to 2 revisions and 4K color export.'
+    initialValues?.description || ''
   );
 
   // Synchronize when initialValues change (e.g. from VAKRA auto-draft)

@@ -115,3 +115,23 @@ export interface Channel {
   lastActive: string;
   dealId?: string;
 }
+
+export interface CreatorProfile {
+  id: string;
+  userId?: string;
+  name: string;
+  username?: string;
+  avatar: string;
+  role: string;
+  rating: number;
+  reviewsCount: number;
+  hourlyRate: string;
+  tags: string[];
+  bio: string;
+  verifiedPro: boolean;
+  sampleVideoTitle?: string;
+  dealsCompleted: number;
+  deliveryTime: string;
+  createdAt?: string;
+  portfolioUrl?: string;
+}

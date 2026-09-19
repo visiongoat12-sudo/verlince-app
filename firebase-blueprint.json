@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered user profile on Verilance platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "recoveryEmail": { "type": "string" },
+        "role": { "type": "string", "enum": ["creator", "editor"] },
+        "avatar": { "type": "string" },
+        "kycStatus": { "type": "string", "enum": ["unverified", "pending", "verified"] },
+        "idDocumentName": { "type": "string" },
+        "hasVerifiedBadge": { "type": "boolean" },
+        "walletBalance": { "type": "number" },
+        "bio": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "username", "email", "role"]
+    },
+    "Creator": {
+      "title": "Creator",
+      "description": "Public verified creator/editor listing on the marketplace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "avatar": { "type": "string" },
+        "role": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewsCount": { "type": "number" },
+        "hourlyRate": { "type": "string" },
+        "tags": { "type": "array" },
+        "bio": { "type": "string" },
+        "verifiedPro": { "type": "boolean" },
+        "sampleVideoTitle": { "type": "string" },
+        "dealsCompleted": { "type": "number" },
+        "deliveryTime": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "role", "hourlyRate"]
+    },
+    "Deal": {
+      "title": "Deal",
+      "description": "Escrow deal agreement between a client and creator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "clientId": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "creatorId", "clientId", "amount", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection stored by user ID"
+    },
+    "/creators/{creatorId}": {
+      "schema": "Creator",
+      "description": "Public marketplace listings of creators and video editors"
+    },
+    "/deals/{dealId}": {
+      "schema": "Deal",
+      "description": "Escrow contracts and agreements"
+    }
+  }
+}

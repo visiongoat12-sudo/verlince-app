@@ -20,16 +20,12 @@ import {
 } from 'lucide-react';
 
 const TAKEN_USERNAMES = new Set([
-  'john_doe',
-  'kabir_vfx',
-  'aarav_tech',
-  'rohit_visuals',
-  'priya_films',
   'verilance',
   'admin',
   'vakra_ai',
-  'supereditor',
-  'creator_hub'
+  'support',
+  'system',
+  'root'
 ]);
 
 interface OnboardingModalProps {
@@ -47,13 +43,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 }) => {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
-  const [username, setUsername] = useState(user.username || 'kabir_vfx');
+  const [username, setUsername] = useState(user.username || '');
   const [recoveryEmail, setRecoveryEmail] = useState(user.recoveryEmail || '');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('available');
   const [usernameFeedback, setUsernameFeedback] = useState('');
   const [suggestedUsernames, setSuggestedUsernames] = useState<string[]>([]);
   const [role, setRole] = useState<UserRole>(user.role);
-  const [idDocName, setIdDocName] = useState<string | null>(user.idDocumentName || 'Aadhaar_Govt_Card_Verified.pdf');
+  const [idDocName, setIdDocName] = useState<string | null>(user.idDocumentName || null);
   const [isUploading, setIsUploading] = useState(false);
   const [hasPurchasedBadge, setHasPurchasedBadge] = useState(user.hasVerifiedBadge);
   const [badgeSuccessMessage, setBadgeSuccessMessage] = useState(false);
