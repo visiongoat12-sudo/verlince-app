@@ -23,5 +23,15 @@ service cloud.firestore {
     match /deals/{dealId} {
       allow read, write: if true;
     }
+
+    // Channels collection
+    match /channels/{channelId} {
+      allow read, write: if true;
+    }
+
+    // Messages collection
+    match /messages/{messageId} {
+      allow read, write: if true;
+    }
   }
 }

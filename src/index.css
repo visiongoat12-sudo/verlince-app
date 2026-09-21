@@ -15,9 +15,23 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
   }
+
+  /* Safe Area Utilities for Mobile Notches & Bottom Navigation Bars */
+  .pt-safe {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .pb-safe {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .pl-safe {
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+  .pr-safe {
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
 }
 
-/* Luxury glow animations */
+/* Luxury subtle pulse animations */
 @keyframes pulse-subtle {
   0%, 100% { opacity: 0.85; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.02); }
@@ -26,3 +40,235 @@
 .animate-pulse-subtle {
   animation: pulse-subtle 3s ease-in-out infinite;
 }
+
+/* ==========================================================================
+   MOBILE FLEXBOX & RESPONSIVE MEDIA QUERIES FOR ALL SCREEN RATIOS
+   ========================================================================== */
+
+/* 1. Base Mobile-Friendly Flex & Touch Rules */
+html, body {
+  min-height: 100%;
+  min-height: -webkit-fill-available;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* Form inputs & interactive buttons touch target sizing */
+input, select, textarea, button {
+  font-size: 16px; /* Prevents auto-zoom on iOS Safari */
+}
+
+@media (min-width: 641px) {
+  input, select, textarea {
+    font-size: 14px;
+  }
+}
+
+/* 2. Standard Mobile Viewports (<= 768px: Tablets & Phones) */
+@media screen and (max-width: 768px) {
+  /* Flex Layout Flow Adapters */
+  .responsive-flex-wrap {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 0.75rem;
+  }
+
+  .mobile-touch-target {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Modal scaling for tall mobile screens */
+  .mobile-modal-sheet {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 20px) !important;
+    width: 100% !important;
+    border-radius: 1.5rem 1.5rem 0 0 !important;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Chat & Deal Flex Layout */
+  .escrow-chat-layout {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 65px);
+  }
+}
+
+/* 3. Compact Smartphone Displays (<= 480px: iPhone 13/14/15/16, Pixel, Galaxy S series) */
+@media screen and (max-width: 480px) {
+  /* Header Nav Stack */
+  header {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    gap: 0.5rem !important;
+  }
+
+  /* Nav switcher buttons compact flex */
+  #nav-tab-marketplace,
+  #nav-tab-profile-verification,
+  #nav-tab-escrow-workspace {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    font-size: 11px !important;
+  }
+
+  /* Form Flexbox Adjustments */
+  .mobile-form-row {
+    display: flex;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Bottom sticky actions */
+  .mobile-sticky-action-bar {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #0d0f17;
+    padding: 0.75rem;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 30;
+    display: flex;
+    gap: 0.5rem;
+  }
+}
+
+/* 4. Ultra-Compact Displays (<= 360px: iPhone SE, Galaxy Z Flip outer, small screens) */
+@media screen and (max-width: 360px) {
+  .brand-logo-text {
+    display: none;
+  }
+
+  header {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  #nav-tab-marketplace span,
+  #nav-tab-profile-verification span,
+  #nav-tab-escrow-workspace span {
+    display: none;
+  }
+
+  .compact-btn-text-hide {
+    display: none;
+  }
+
+  /* Inputs and buttons flex-shrink prevention */
+  input, button {
+    flex-shrink: 0;
+  }
+}
+
+/* 5. Modern Ultra-Tall Smartphone Aspect Ratios (19.5:9, 20:9, 21:9: Sony Xperia, iPhone Pro Max, Samsung Ultra) */
+@media screen and (max-aspect-ratio: 9/16) {
+  .tall-device-flex-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 100dvh;
+  }
+
+  .tall-device-scroll-area {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 6. Mobile Landscape Viewports (<= 500px height with horizontal orientation) */
+@media screen and (max-height: 500px) and (orientation: landscape) {
+  header {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+  }
+
+  .mobile-modal-sheet,
+  #gallery-permission-dialog,
+  #auth-onboarding-card,
+  #auth-gate-modal-card {
+    max-height: 94dvh !important;
+    padding: 1rem !important;
+  }
+
+  /* Flatten nested vertical padding to keep inputs accessible above on-screen keyboard */
+  .landscape-compact-padding {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+}
+
+/* 7. Foldables & Near-Square Screen Ratios (e.g. 1:1, 4:3, 5:4, Samsung Galaxy Z Fold inner, Google Pixel Fold) */
+@media screen and (min-width: 600px) and (max-width: 1024px) and (min-aspect-ratio: 4/5) and (max-aspect-ratio: 5/4) {
+  .foldable-flex-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .foldable-two-col {
+    display: flex;
+    flex: 1 1 calc(50% - 0.5rem);
+    min-width: 280px;
+  }
+
+  #auth-gate-modal-card {
+    max-width: 680px;
+  }
+}
+
+/* 8. Split-Screen & Multi-Window Multitasking Ratios (narrow width on any device) */
+@media screen and (max-width: 640px) {
+  /* Ensure all flex children do not overflow on extreme narrow UI ratios */
+  .flex, [class*="flex-"] {
+    min-width: 0;
+  }
+
+  /* Responsive media query for cards and chat containers */
+  .ratio-adaptive-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Full width action controls on mobile screens */
+  .mobile-full-width-btn {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Prevent text wrapping issues on badges in small screens */
+  .truncate-mobile {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* 9. High-DPI / Retina Mobile Screens (sharp borders and crisp flex spacing) */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .crisp-border {
+    border-width: 0.5px;
+  }
+}
+

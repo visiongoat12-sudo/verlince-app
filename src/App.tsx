@@ -35,61 +35,87 @@ import {
   PlusCircle,
   Handshake,
   Search,
-  LogOut
+  LogOut,
+  RotateCcw,
+  Trash2
 } from 'lucide-react';
 import { fetchUserFromDB, saveUserToDB } from './lib/firebase';
+import { 
+  initializeCleanSlateAuth, 
+  clearAllStorageData, 
+  CLEAN_SLATE_USER, 
+  executeFullDatabaseWipe 
+} from './lib/dataReset';
 
 export default function App() {
+  // Check and enforce clean-slate auth logic on startup
+  const initialAuth = initializeCleanSlateAuth();
+
   // Navigation View State: 'marketplace' (Default Upwork-inspired layout) vs 'profile' vs 'escrow'
   const [currentView, setCurrentView] = useState<'marketplace' | 'profile' | 'escrow'>('marketplace');
 
-  // Authentication & Onboarding Gate State
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('verilance_auth_completed') === 'true';
-    } catch {
-      return false;
-    }
+  // Authentication & Onboarding Gate State (Clean Slate: unauthenticated by default)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(initialAuth.isAuthenticated);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(initialAuth.isAuthModalOpen);
+
+  // 1. Current User State (Zero balances, clean fields, no mock persona)
+  const [currentUser, setCurrentUser] = useState<UserProfile>(initialAuth.initialUser);
+
+  // 2. Modals State
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isDealModalOpen, setIsDealModalOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Deal Form Pre-fills (starts clean)
+  const [dealInitialValues, setDealInitialValues] = useState<{
+    serviceType?: string;
+    amount?: number;
+    deadline?: string;
+    description?: string;
+    senderRole?: 'client' | 'freelancer';
+  }>({
+    serviceType: '',
+    amount: 0,
+    deadline: '',
+    description: '',
+    senderRole: 'client',
   });
 
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('verilance_auth_completed') !== 'true';
-    } catch {
-      return true;
-    }
-  });
+  // 3. Channels List (Clean Slate: 0 conversations initially)
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
 
-  // 1. Current User State
-  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
-    try {
-      const stored = localStorage.getItem('verilance_auth_user');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.warn('Could not read cached user', e);
-    }
-    return {
-      id: 'user-001',
-      name: 'Kabir Verma',
-      username: 'kabir_vfx',
-      email: 'kabir.vfx@verilance.io',
-      recoveryEmail: 'kabir.recovery@gmail.com',
-      role: 'editor', // 'creator' (client) or 'editor' (freelancer)
-      idDocumentName: 'Aadhaar_Govt_Card_Verified.pdf',
-      hasVerifiedBadge: true,
-      badgePurchasedAt: '2026-09-01',
-      badgeExpiresAt: '2026-12-01',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      kycStatus: 'verified',
-      walletBalance: 24500,
-    };
-  });
+  // 4. Chat Messages Feed (Clean Slate: 0 messages initially)
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  // Sync real profile from Firestore on load if available
+  // 5. Active Deal State (Clean Slate: null / 0 active deals initially)
+  const [activeDeal, setActiveDeal] = useState<DealAgreement | null>(null);
+
+  // 6. Work Delivery State (Clean Slate: null initially)
+  const [workDelivery, setWorkDelivery] = useState<WorkDelivery | null>(null);
+
+  // Sync real profile from Firestore on load & trigger full blank-slate wipe if uninitiated
   useEffect(() => {
-    if (currentUser?.id) {
+    const isWipedV5 = localStorage.getItem('verilance_wipe_v5_clean') === 'true';
+    if (!isWipedV5) {
+      console.log('[App] Initializing fresh database blank slate (0 users, 0 deals, 0 profiles)...');
+      executeFullDatabaseWipe().then(() => {
+        localStorage.setItem('verilance_wipe_v5_clean', 'true');
+        setCurrentUser(CLEAN_SLATE_USER);
+        setIsAuthenticated(false);
+        setIsAuthModalOpen(true);
+        setActiveDeal(null);
+        setWorkDelivery(null);
+        setChannels([]);
+        setMessages([]);
+        setActiveChannel(null);
+      }).catch((err) => {
+        console.warn('[App] Database wipe notice:', err);
+      });
+      return;
+    }
+
+    if (currentUser?.id && currentUser.id !== 'clean-slate-user') {
       fetchUserFromDB(currentUser.id)
         .then((liveDoc) => {
           if (liveDoc) {
@@ -133,210 +159,31 @@ export default function App() {
   };
 
   const handleSignOut = () => {
-    try {
-      localStorage.removeItem('verilance_auth_completed');
-      localStorage.removeItem('verilance_auth_user');
-    } catch (e) {
-      console.warn(e);
-    }
+    clearAllStorageData();
+    setCurrentUser(CLEAN_SLATE_USER);
     setIsAuthenticated(false);
     setIsAuthModalOpen(true);
   };
 
-  // 2. Modals State
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [isDealModalOpen, setIsDealModalOpen] = useState(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  // Complete Data Reset and Storage Cleanup
+  const handleResetAppData = async () => {
+    const confirmed = window.confirm(
+      'Perform complete Database Wipe & Storage Reset?\n\nThis will purge all registered user accounts, active deals, creator listings, and chat channels to a 100% blank slate (0 users, 0 active deals, 0 profiles).'
+    );
+    if (!confirmed) return;
 
-  // Deal Form Pre-fills (e.g. from VAKRA Auto-Draft)
-  const [dealInitialValues, setDealInitialValues] = useState<{
-    serviceType?: string;
-    amount?: number;
-    deadline?: string;
-    description?: string;
-    senderRole?: 'client' | 'freelancer';
-  }>({
-    serviceType: 'YouTube Video Editing',
-    amount: 2000,
-    deadline: '2026-09-25',
-    description: 'Edit 10-minute video, includes up to 2 revisions, dynamic zooms, color grade and 4K export.',
-    senderRole: 'client',
-  });
-
-  // 3. Channels List
-  const [channels, setChannels] = useState<Channel[]>([
-    {
-      id: 'ch-aarav',
-      name: 'Aarav Sharma (Tech YouTuber)',
-      subtitle: 'Need 10-min YouTube cut before 25 Sep...',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      isGroup: false,
-      unreadCount: 1,
-      isOnline: true,
-      lastActive: '2m ago',
-    },
-    {
-      id: 'ch-rohit',
-      name: 'Rohit Visuals (Senior Colorist)',
-      subtitle: 'Delivered LUTs for the documentary.',
-      avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
-      isGroup: false,
-      unreadCount: 0,
-      isOnline: true,
-      lastActive: '1h ago',
-    },
-    {
-      id: 'ch-group-studios',
-      name: 'NeonVerse Editing Guild',
-      subtitle: 'Priya: Who is available for 60s Reels?',
-      avatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-      isGroup: true,
-      unreadCount: 4,
-      isOnline: true,
-      lastActive: '10m ago',
-    },
-    {
-      id: 'ch-group-creators',
-      name: 'Creator Escrow Alliance',
-      subtitle: 'VAKRA bot updated safety guidelines.',
-      avatar: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=150&auto=format&fit=crop&q=80',
-      isGroup: true,
-      unreadCount: 0,
-      isOnline: false,
-      lastActive: 'yesterday',
-    },
-  ]);
-
-  const [activeChannel, setActiveChannel] = useState<Channel>(channels[0]);
-
-  // 4. Chat Messages Feed
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'm1',
-      senderId: 'client-aarav',
-      senderName: 'Aarav Sharma',
-      senderRole: 'creator',
-      timestamp: '11:15 AM',
-      type: 'text',
-      text: 'Hey Kabir! Saw your recent portfolio reel. I have a 10-minute gadget teardown video for YouTube that needs punchy edits, sound FX, and clean zooms.',
-    },
-    {
-      id: 'm2',
-      senderId: 'client-aarav',
-      senderName: 'Aarav Sharma',
-      senderRole: 'creator',
-      timestamp: '11:16 AM',
-      type: 'voice',
-      voiceDuration: '0:42',
-    },
-    {
-      id: 'm3',
-      senderId: 'client-aarav',
-      senderName: 'Aarav Sharma',
-      senderRole: 'creator',
-      timestamp: '11:18 AM',
-      type: 'file',
-      fileAttachment: {
-        name: 'RAW_A_Roll_Camera_4K.zip',
-        size: '2.4 GB',
-        type: 'video',
-      },
-      text: 'Here is the raw footage archive. Target delivery is 25 September.',
-    },
-    {
-      id: 'm4',
-      senderId: 'vakra-ai',
-      senderName: 'VAKRA Cyber Sentinel',
-      senderRole: 'vakra',
-      timestamp: '11:19 AM',
-      type: 'vakra_alert',
-      text: 'Warning: Never share raw, unwatermarked files outside the secure "Submit Work" system! Use the 🤝 Deal button below to secure ₹2,000 into VERILANCE Escrow before starting production.',
-    },
-    {
-      id: 'm5',
-      senderId: 'user-001',
-      senderName: 'Kabir Verma',
-      senderRole: 'editor',
-      timestamp: '11:21 AM',
-      type: 'text',
-      text: 'Got it Aarav! I can deliver a high-energy edit with sound design and up to 2 revisions for ₹2,000. Let us lock the agreement in Escrow so both our files and funds are protected.',
-    },
-    {
-      id: 'm6',
-      senderId: 'user-001',
-      senderName: 'Kabir Verma',
-      senderRole: 'editor',
-      timestamp: '11:22 AM',
-      type: 'view_once',
-      text: 'Here is a 1-Time protected draft cut of the gadget teardown hook. You can watch it once with anti-capture protection.',
-      viewOnceMedia: {
-        id: 'vo-sample-vid',
-        mediaType: 'video',
-        title: 'Gadget Teardown Hook Cut (4K)',
-        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&auto=format&fit=crop&q=80',
-        fileSize: '18.4 MB • 4K 60FPS',
-        durationSeconds: 20,
-        isExpired: false,
-      },
-    },
-    {
-      id: 'm7',
-      senderId: 'user-001',
-      senderName: 'Kabir Verma',
-      senderRole: 'editor',
-      timestamp: '11:24 AM',
-      type: 'view_once',
-      text: 'Color grade LUT test frame attached. Protected with VERILANCE View Once.',
-      viewOnceMedia: {
-        id: 'vo-sample-img',
-        mediaType: 'image',
-        title: 'Studio Lighting Color Grade Reference',
-        url: 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=1200&auto=format&fit=crop&q=80',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=300&auto=format&fit=crop&q=80',
-        fileSize: '3.8 MB • RAW PNG',
-        durationSeconds: 15,
-        isExpired: false,
-      },
-    },
-  ]);
-
-  // 5. Active Deal State (Pre-loaded with baseline agreement matching prompt: ₹2,000 for YouTube Video Editing)
-  const [activeDeal, setActiveDeal] = useState<DealAgreement | null>({
-    id: 'TRW-849201',
-    title: 'YouTube Video Editing',
-    senderRole: 'client',
-    senderName: 'Aarav Sharma (Client)',
-    receiverName: 'Kabir Verma (Editor)',
-    serviceType: 'YouTube Video Editing',
-    amount: 2000,
-    commissionFee: 60, // 3% fee
-    netPayout: 1940,   // ₹2,000 - ₹60 = ₹1,940
-    deadline: '2026-09-25',
-    description: 'Edit 10-minute video, includes up to 2 revisions, dynamic zooms, color grade and 4K export.',
-    paymentMethod: 'UPI',
-    status: 'escrow_secured',
-    createdAt: '2026-09-19T11:25:00Z',
-    history: [
-      {
-        id: 'h-1',
-        title: 'Digital Agreement Sealed',
-        detail: 'Both creator and editor signed cryptographically signed terms.',
-        timestamp: '11:25 AM',
-        type: 'neutral',
-      },
-      {
-        id: 'h-2',
-        title: 'Funds Secured in Escrow 🔒',
-        detail: '₹2,000 locked in Trustway Multi-Sig Vault. 3% platform commission allocated.',
-        timestamp: '11:26 AM',
-        type: 'secure',
-      },
-    ],
-  });
-
-  // 6. Work Delivery State (Watermarked Video)
-  const [workDelivery, setWorkDelivery] = useState<WorkDelivery | null>(null);
+    await executeFullDatabaseWipe();
+    setCurrentUser(CLEAN_SLATE_USER);
+    setIsAuthenticated(false);
+    setIsAuthModalOpen(true);
+    setActiveDeal(null);
+    setWorkDelivery(null);
+    setChannels([]);
+    setMessages([]);
+    setActiveChannel(null);
+    setCurrentView('marketplace');
+    alert('Application database reset to blank slate (0 users, 0 active deals, 0 profiles).');
+  };
 
   // Handlers
   const handleSendMessage = (text: string) => {
@@ -386,11 +233,18 @@ export default function App() {
 
   const handleToggleUserRole = () => {
     const nextRole: UserRole = currentUser.role === 'creator' ? 'editor' : 'creator';
-    setCurrentUser((prev) => ({
-      ...prev,
-      role: nextRole,
-      name: nextRole === 'creator' ? 'Aarav Sharma' : 'Kabir Verma',
-    }));
+    setCurrentUser((prev) => {
+      const updated = {
+        ...prev,
+        role: nextRole,
+      };
+      try {
+        localStorage.setItem('verilance_auth_user', JSON.stringify(updated));
+      } catch (e) {
+        console.warn(e);
+      }
+      return updated;
+    });
   };
 
   // VAKRA Auto-Draft Trigger
@@ -615,23 +469,40 @@ export default function App() {
     setMessages((prev) => [...prev, resMsg]);
   };
 
+  // 1. MANDATORY AUTHENTICATION GUARD
+  // Make authentication (Sign-In/Sign-Up) strictly compulsory across ALL sections of the application.
+  // Restrict unauthenticated users from accessing the Marketplace, Editor Profiles, Dashboard, Escrow Workspace, or Settings.
+  // Automatically redirect any unauthenticated user immediately to the Login/Registration screen before rendering any content.
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen w-full bg-[#07090d] text-slate-100 flex flex-col justify-center items-center relative overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
+        <AuthOnboardingModal
+          isOpen={true}
+          onAuthSuccess={handleAuthSuccess}
+          currentUser={null}
+          canDismiss={false}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen bg-[#07090d] text-slate-100 overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
       {/* 1. TOP APP HEADER BAR */}
       <header 
         id="app-header-bar"
-        className="h-16 border-b border-white/10 bg-[#0a0d13]/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between shrink-0 z-30"
+        className="h-16 border-b border-white/10 bg-[#0a0d13]/95 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between shrink-0 z-30"
       >
         {/* Logo & Platform Identity */}
         <div 
           onClick={() => setCurrentView('marketplace')}
-          className="flex items-center gap-3 cursor-pointer select-none group"
+          className="flex items-center gap-3 cursor-pointer select-none group shrink-0"
         >
           <VerilanceLogo size="md" />
         </div>
 
-        {/* Center Navigation Switcher Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-[#131722] rounded-xl border border-white/10 shadow-inner">
+        {/* Center Navigation Switcher Tabs (Hidden on mobile; moved to bottom navigation bar for touch ergonomic design) */}
+        <div className="hidden md:flex items-center gap-1.5 p-1 bg-[#131722] rounded-xl border border-white/10 shadow-inner">
           <button
             id="nav-tab-marketplace"
             onClick={() => setCurrentView('marketplace')}
@@ -728,35 +599,59 @@ export default function App() {
 
           {/* User Account Pill & Sign Out / Switch Profile */}
           <div className="flex items-center gap-2 pl-2 border-l border-white/10">
-            <button
-              id="header-user-profile-menu-btn"
-              onClick={() => setCurrentView('profile')}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#141822] hover:bg-[#1a202d] border border-white/10 transition group"
-              title="View Profile & Security"
-            >
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
-                className="w-6 h-6 rounded-full object-cover ring-1 ring-cyan-500/40"
-              />
-              <div className="hidden md:flex flex-col text-left leading-none">
-                <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
-                  {currentUser.name.split(' ')[0]}
-                </span>
-                <span className="text-[10px] text-cyan-400/80 font-mono">
-                  @{currentUser.username || 'user'}
-                </span>
-              </div>
-            </button>
+            {isAuthenticated ? (
+              <>
+                <button
+                  id="header-user-profile-menu-btn"
+                  onClick={() => setCurrentView('profile')}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#141822] hover:bg-[#1a202d] border border-white/10 transition group"
+                  title="View Profile & Security"
+                >
+                  <img
+                    src={currentUser.avatar}
+                    alt={currentUser.name || 'User'}
+                    className="w-6 h-6 rounded-full object-cover ring-1 ring-cyan-500/40"
+                  />
+                  <div className="hidden md:flex flex-col text-left leading-none">
+                    <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
+                      {currentUser.name ? currentUser.name.split(' ')[0] : 'Member'}
+                    </span>
+                    <span className="text-[10px] text-cyan-400/80 font-mono">
+                      @{currentUser.username || 'user'}
+                    </span>
+                  </div>
+                </button>
 
+                <button
+                  id="header-auth-switch-btn"
+                  onClick={handleSignOut}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-red-500/15 hover:border-red-500/30 text-slate-400 hover:text-red-400 border border-white/10 text-xs transition flex items-center gap-1"
+                  title="Sign Out / Switch Account"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline text-[11px] font-medium">Log Out</span>
+                </button>
+              </>
+            ) : (
+              <button
+                id="header-login-btn"
+                onClick={() => setIsAuthModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold text-xs hover:brightness-110 shadow-md shadow-cyan-500/20 transition flex items-center gap-1.5"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
+            )}
+
+            {/* Complete Data Reset and Storage Cleanup Button */}
             <button
-              id="header-auth-switch-btn"
-              onClick={handleSignOut}
-              className="p-2 rounded-xl bg-white/5 hover:bg-red-500/15 hover:border-red-500/30 text-slate-400 hover:text-red-400 border border-white/10 text-xs transition flex items-center gap-1"
-              title="Sign Out / Switch Account"
+              id="header-reset-app-btn"
+              onClick={handleResetAppData}
+              className="p-2 rounded-xl bg-white/5 hover:bg-amber-500/15 hover:border-amber-500/30 text-slate-400 hover:text-amber-400 border border-white/10 text-xs transition flex items-center gap-1"
+              title="Data Reset & Storage Cleanup (Clean Slate)"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline text-[11px] font-medium">Switch</span>
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden 2xl:inline text-[11px] font-medium">Reset Data</span>
             </button>
           </div>
 
@@ -777,14 +672,27 @@ export default function App() {
       {/* 2. MAIN APPLICATION WORKSPACE */}
       {currentView === 'marketplace' ? (
         /* UPWORK-INSPIRED FREELANCE MARKETPLACE INTERFACE */
-        <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10]">
+        <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10] pb-20 md:pb-0">
           <MarketplaceHome
             onOpenDealModal={() => setIsDealModalOpen(true)}
             onOpenProfile={() => setCurrentView('profile')}
             onOpenChat={(talentName) => {
               if (talentName) {
-                // If a talent was clicked, switch to active chat with them
-                const targetChannel = channels.find(c => c.name.toLowerCase().includes(talentName.toLowerCase().split(' ')[0])) || channels[0];
+                // If a talent was clicked, switch to active chat with them or create fresh conversation
+                let targetChannel = channels.find(c => c.name.toLowerCase().includes(talentName.toLowerCase().split(' ')[0]));
+                if (!targetChannel) {
+                  targetChannel = {
+                    id: `ch-${Date.now()}`,
+                    name: talentName,
+                    subtitle: 'Escrow Direct Channel',
+                    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+                    isGroup: false,
+                    unreadCount: 0,
+                    isOnline: true,
+                    lastActive: 'Just now',
+                  };
+                  setChannels(prev => [targetChannel!, ...prev]);
+                }
                 setActiveChannel(targetChannel);
               }
               setCurrentView('escrow');
@@ -795,17 +703,18 @@ export default function App() {
         </main>
       ) : currentView === 'profile' ? (
         /* USER PROFILE & VERIFICATION DASHBOARD */
-        <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10]">
+        <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10] pb-20 md:pb-0">
           <ProfileVerificationDashboard 
             currentUser={currentUser}
             onUpdateProfile={handleUpdateProfile}
             onOpenAuthGate={handleSignOut}
             onOpenEditModal={() => setIsOnboardingOpen(true)}
+            onResetData={handleResetAppData}
           />
         </main>
       ) : (
         /* ESCROW WORKSPACE & CHAT */
-        <div className="flex-1 flex overflow-hidden relative">
+        <div className="flex-1 flex overflow-hidden relative pb-16 md:pb-0">
           {/* Center Workspace: Chat & VAKRA AI */}
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             {/* Embedded VAKRA Cyber Security AI Assistant Panel */}
@@ -918,9 +827,68 @@ export default function App() {
         onClose={() => setIsDealModalOpen(false)}
         onConfirmDeal={handleConfirmDeal}
         initialValues={dealInitialValues}
-        clientName="Aarav Sharma"
-        freelancerName="Kabir Verma"
+        clientName={currentUser.role === 'creator' ? (currentUser.name || 'Client') : 'Client Partner'}
+        freelancerName={currentUser.role === 'editor' ? (currentUser.name || 'Freelancer') : 'Editor Partner'}
       />
+
+      {/* 4. MOBILE BOTTOM NAVIGATION BAR (Touch-optimized for smartphones & tablets) */}
+      <nav 
+        id="mobile-bottom-navigation-bar"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-[#0a0d13]/95 border-t border-white/10 backdrop-blur-xl px-2 py-1.5 flex items-center justify-around shadow-[0_-10px_25px_rgba(0,0,0,0.6)]"
+      >
+        <button
+          id="mobile-nav-marketplace"
+          onClick={() => setCurrentView('marketplace')}
+          className={`flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl transition ${
+            currentView === 'marketplace'
+              ? 'text-cyan-400 bg-cyan-500/10 font-bold'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Store className="w-4 h-4 mb-1" />
+          <span className="text-[10px] tracking-tight">Marketplace</span>
+        </button>
+
+        <button
+          id="mobile-nav-escrow"
+          onClick={() => setCurrentView('escrow')}
+          className={`flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl transition relative ${
+            currentView === 'escrow'
+              ? 'text-cyan-400 bg-cyan-500/10 font-bold'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <div className="relative">
+            <MessageSquare className="w-4 h-4 mb-1" />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-[#0a0d13]" />
+          </div>
+          <span className="text-[10px] tracking-tight">Escrow</span>
+        </button>
+
+        <button
+          id="mobile-nav-deal"
+          onClick={() => setIsDealModalOpen(true)}
+          className="flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl text-teal-300 hover:text-teal-200 transition"
+        >
+          <div className="w-6 h-6 rounded-full bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 flex items-center justify-center mb-0.5 shadow-md shadow-cyan-500/20">
+            <Handshake className="w-3.5 h-3.5" />
+          </div>
+          <span className="text-[10px] tracking-tight font-bold">Post Deal</span>
+        </button>
+
+        <button
+          id="mobile-nav-profile"
+          onClick={() => setCurrentView('profile')}
+          className={`flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl transition ${
+            currentView === 'profile'
+              ? 'text-purple-400 bg-purple-500/10 font-bold'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <User className="w-4 h-4 mb-1" />
+          <span className="text-[10px] tracking-tight">Profile & KYC</span>
+        </button>
+      </nav>
     </div>
   );
 }

@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import { UserProfile, UserRole } from '../types';
 import { VerilanceLogo } from './VerilanceLogo';
-import { saveUserToDB, checkUsernameInDB } from '../lib/firebase';
+import { saveUserToDB, checkUsernameInDB, checkEmailInDB, fetchUserByEmailOrUsername } from '../lib/firebase';
+import { GalleryPermissionModal } from './GalleryPermissionModal';
+import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -58,54 +60,65 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
   const [authMode, setAuthMode] = useState<AuthMode>('register');
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('auth');
 
-  // Step 1: Auth fields
-  const [email, setEmail] = useState(currentUser?.email || '');
+  // Step 1: Auth fields (empty by default for clean sign-in and sign-up)
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [fullName, setFullName] = useState(currentUser?.name || '');
+  const [fullName, setFullName] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [isProcessingGoogle, setIsProcessingGoogle] = useState(false);
   const [isProcessingEmail, setIsProcessingEmail] = useState(false);
 
-  // Step 2: Username & Role
-  const [username, setUsername] = useState(currentUser?.username || '');
+  // Step 2: Username & Role (empty by default)
+  const [username, setUsername] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [usernameFeedback, setUsernameFeedback] = useState<string>('');
   const [suggestedUsernames, setSuggestedUsernames] = useState<string[]>([]);
   const [role, setRole] = useState<UserRole>(currentUser?.role || 'editor');
 
-  // Step 3: Security & Recovery Email
-  const [recoveryEmail, setRecoveryEmail] = useState(currentUser?.recoveryEmail || '');
+  // Step 3: Security & Recovery Email (empty by default)
+  const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryEmailError, setRecoveryEmailError] = useState<string | null>(null);
   const [enableTwoFactor, setEnableTwoFactor] = useState(true);
 
   // Step 4: Personal Memoranda & KYC + Verified Badge
-  const [idDocName, setIdDocName] = useState<string | null>(currentUser?.idDocumentName || null);
+  const [idDocName, setIdDocName] = useState<string | null>(null);
   const [isUploadingId, setIsUploadingId] = useState(false);
-  const [wantsVerifiedBadge, setWantsVerifiedBadge] = useState(currentUser?.hasVerifiedBadge ?? true);
+  const [wantsVerifiedBadge, setWantsVerifiedBadge] = useState(false);
   const [kycAgreed, setKycAgreed] = useState(true);
+
+  // Mobile Gallery Permission & File Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isGalleryPermModalOpen, setIsGalleryPermModalOpen] = useState(false);
 
   // Focus and ID generation
   const usernameInputId = useId();
   const emailInputId = useId();
 
-  // Reset or initialize state
+  // Reset or initialize state: all sign-in and sign-up inputs strictly empty by default
   useEffect(() => {
-    if (currentUser) {
+    if (canDismiss && currentUser && currentUser.email && !currentUser.id.startsWith('guest')) {
       setEmail(currentUser.email);
-      setFullName(currentUser.name);
+      setFullName(currentUser.name || '');
       if (currentUser.username) {
         setUsername(currentUser.username);
         setUsernameStatus('available');
       }
-      setRole(currentUser.role);
+      setRole(currentUser.role || 'editor');
       if (currentUser.recoveryEmail) {
         setRecoveryEmail(currentUser.recoveryEmail);
       }
-      setIdDocName(currentUser.idDocumentName);
-      setWantsVerifiedBadge(currentUser.hasVerifiedBadge);
+      setIdDocName(currentUser.idDocumentName || null);
+      setWantsVerifiedBadge(currentUser.hasVerifiedBadge ?? false);
+    } else {
+      // Ensure all fields are empty by default
+      setEmail('');
+      setPassword('');
+      setFullName('');
+      setUsername('');
+      setRecoveryEmail('');
     }
-  }, [currentUser]);
+  }, [currentUser, canDismiss]);
 
   // Live Username Availability Checker with 300ms Debounce
   useEffect(() => {
@@ -162,55 +175,85 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle Google Sign-In (Simulated OAuth flow)
-  const handleGoogleSignIn = () => {
+  // Handle Google Sign-In (OAuth flow)
+  const handleGoogleSignIn = async () => {
     setIsProcessingGoogle(true);
     setAuthError(null);
 
-    setTimeout(() => {
-      setIsProcessingGoogle(false);
+    try {
       const googleUserEmail = 'visiongoat12@gmail.com';
       const googleUserName = 'Vision Goat';
       setEmail(googleUserEmail);
       setFullName(googleUserName);
 
-      // Derive initial suggested username from email
-      const baseName = googleUserEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_');
-      const finalSuggested = TAKEN_USERNAMES.has(baseName) ? `${baseName}_creator` : baseName;
-      setUsername(finalSuggested);
+      // Check if user account already exists in database
+      const existingUser = await fetchUserByEmailOrUsername(googleUserEmail);
 
-      if (authMode === 'sign_in') {
-        // Direct login
-        completeAuthentication({
-          id: `usr-${Date.now()}`,
-          name: googleUserName,
-          username: finalSuggested,
-          email: googleUserEmail,
-          role: 'creator',
-          idDocumentName: 'Aadhaar_Govt_Verified.pdf',
-          hasVerifiedBadge: true,
-          badgePurchasedAt: '2026-09-01',
-          badgeExpiresAt: '2026-12-01',
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-          kycStatus: 'verified',
-          walletBalance: 35000,
-        });
-      } else {
-        // Move to Step 2 to configure unique username & role
+      if (authMode === 'register') {
+        if (existingUser) {
+          setIsProcessingGoogle(false);
+          setAuthError('This email address is already registered. Please sign in or use a different email.');
+          return;
+        }
+
+        // First-time signup: NEVER auto-fill or suggest username!
+        // Require user to manually enter their unique handle with live availability validation
+        setIsProcessingGoogle(false);
+        setUsername('');
+        setUsernameStatus('idle');
+        setUsernameFeedback('');
+        setSuggestedUsernames([]);
         setCurrentStep('username_role');
+        return;
       }
-    }, 600);
+
+      // Sign In mode
+      if (existingUser) {
+        setIsProcessingGoogle(false);
+        completeAuthentication(existingUser);
+        return;
+      } else {
+        setIsProcessingGoogle(false);
+        setAuthError('No account found for this Google email. Please sign up or use a different email.');
+        return;
+      }
+    } catch (err) {
+      setIsProcessingGoogle(false);
+      setAuthError('Google sign-in verification failed. Please try again.');
+    }
   };
 
   // Handle Email Registration / Sign In submit
-  const handleEmailAuthSubmit = (e: React.FormEvent) => {
+  const handleEmailAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setAuthError('Please enter a valid, active Email address.');
+    const cleanInput = email.trim();
+    if (!cleanInput) {
+      setAuthError('Please enter your email address or username handle.');
       return;
+    }
+
+    if (authMode === 'register') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanInput)) {
+        setAuthError('Please enter a valid, active Email address.');
+        return;
+      }
+
+      // Strict Unique Email Enforcement (1 Email = 1 Account)
+      setIsProcessingEmail(true);
+      try {
+        const isEmailRegistered = await checkEmailInDB(cleanInput);
+        if (isEmailRegistered) {
+          setIsProcessingEmail(false);
+          setAuthError('This email address is already registered. Please sign in or use a different email.');
+          return;
+        }
+      } catch (err) {
+        console.warn('Error checking email in database:', err);
+      }
+      setIsProcessingEmail(false);
     }
 
     if (password.length < 6) {
@@ -220,39 +263,44 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
 
     setIsProcessingEmail(true);
 
-    setTimeout(() => {
-      setIsProcessingEmail(false);
-
+    try {
       if (authMode === 'sign_in') {
-        // Sign-in mode
-        const existingUsername = email.includes('kabir') ? 'kabir_vfx' : email.split('@')[0];
-        completeAuthentication({
-          id: `usr-${Date.now()}`,
-          name: fullName || 'VERILANCE User',
-          username: existingUsername,
-          email,
-          recoveryEmail: recoveryEmail || undefined,
-          role: role || 'editor',
-          idDocumentName: idDocName || 'Aadhaar_Govt_Card_Verified.pdf',
-          hasVerifiedBadge: true,
-          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          kycStatus: 'verified',
-          walletBalance: 24500,
-        });
+        // Look up by email or username in Firestore database
+        const existing = await fetchUserByEmailOrUsername(cleanInput);
+        setIsProcessingEmail(false);
+        if (existing) {
+          completeAuthentication(existing);
+          return;
+        }
+
+        // When DB is fresh or user not found, reject invalid login
+        setAuthError('No registered account found with this email or username. Please sign up first.');
+        return;
       } else {
         // Register mode: proceed to Username & Role step
-        if (!username) {
-          const autoSuggested = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_');
-          setUsername(autoSuggested);
-        }
+        // STRICT REQUIREMENT: Input fields must be completely empty by default.
+        // User MUST manually type their unique handle.
+        setIsProcessingEmail(false);
+        setUsername('');
+        setUsernameStatus('idle');
+        setUsernameFeedback('');
+        setSuggestedUsernames([]);
         setCurrentStep('username_role');
       }
-    }, 500);
+    } catch (err) {
+      setIsProcessingEmail(false);
+      setAuthError('Authentication verification encountered an error. Please try again.');
+    }
   };
 
   // Step 2 validation & Next
   const handleStep2Next = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanUsername = username.trim().toLowerCase();
+    if (!cleanUsername || cleanUsername.length < 3) {
+      setUsernameFeedback('Please enter a unique username (minimum 3 characters).');
+      return;
+    }
     if (usernameStatus !== 'available') {
       setUsernameFeedback('Please choose an available, unique username before continuing.');
       return;
@@ -292,24 +340,65 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
     }
   };
 
+  // Trigger Gallery / File Upload with Mobile Permission Check
+  const handleTriggerDocUpload = () => {
+    if (isMobileDevice() && !hasGalleryAccess()) {
+      setIsGalleryPermModalOpen(true);
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleGalleryPermGranted = () => {
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 150);
+  };
+
+  // Mode switcher that guarantees clean input fields
+  const handleModeSwitch = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setAuthError(null);
+    setEmail('');
+    setPassword('');
+    setFullName('');
+    setUsername('');
+    setRecoveryEmail('');
+  };
+
   // Final Step 4 Complete
-  const handleFinalComplete = () => {
+  const handleFinalComplete = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Final safety verification: 1 Email = 1 Account
+    if (authMode === 'register') {
+      const isRegistered = await checkEmailInDB(cleanEmail);
+      if (isRegistered) {
+        setAuthError('This email address is already registered. Please sign in or use a different email.');
+        setCurrentStep('auth');
+        return;
+      }
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const expiryStr = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
+
     completeAuthentication({
       id: `usr-${Date.now()}`,
       name: fullName || username || 'VERILANCE Member',
       username: username.toLowerCase().trim(),
-      email: email.trim(),
-      recoveryEmail: recoveryEmail.trim() || undefined,
+      email: cleanEmail,
+      recoveryEmail:recoveryEmail.trim()||email,      
       role: role,
-      idDocumentName: idDocName || 'Govt_ID_Encrypted_Memoranda.pdf',
+      idDocumentName: idDocName || null,
       hasVerifiedBadge: wantsVerifiedBadge,
-      badgePurchasedAt: wantsVerifiedBadge ? '2026-09-19' : undefined,
-      badgeExpiresAt: wantsVerifiedBadge ? '2026-12-19' : undefined,
+      badgePurchasedAt: wantsVerifiedBadge ? todayStr : undefined,
+      badgeExpiresAt: wantsVerifiedBadge ? expiryStr : undefined,
       avatar: role === 'creator' 
         ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
         : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      kycStatus: idDocName ? 'verified' : 'pending',
-      walletBalance: role === 'creator' ? 50000 : 18500,
+      kycStatus: idDocName ? 'pending' : 'unverified',
+      walletBalance: 0,
     });
   };
 
@@ -337,7 +426,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
 
       <div 
         id="auth-gate-modal-card"
-        className="relative w-full max-w-xl bg-[#0e121a] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-[0_20px_70px_rgba(0,0,0,0.8)] text-slate-100 my-6 transition-all duration-300"
+        className="relative w-full max-w-xl bg-[#0e121a] border border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 shadow-[0_20px_70px_rgba(0,0,0,0.8)] text-slate-100 my-auto sm:my-6 max-h-[92dvh] overflow-y-auto custom-scrollbar transition-all duration-300"
       >
         {/* Optional Dismiss button if already authenticated */}
         {canDismiss && onClose && (
@@ -391,7 +480,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
               <button
                 type="button"
                 id="tab-register-mode"
-                onClick={() => { setAuthMode('register'); setAuthError(null); }}
+                onClick={() => handleModeSwitch('register')}
                 className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition ${
                   authMode === 'register'
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
@@ -403,7 +492,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
               <button
                 type="button"
                 id="tab-sign-in-mode"
-                onClick={() => { setAuthMode('sign_in'); setAuthError(null); }}
+                onClick={() => handleModeSwitch('sign_in')}
                 className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition ${
                   authMode === 'sign_in'
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
@@ -478,7 +567,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                         required
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        placeholder="e.g., Kabir Verma"
+                        placeholder=""
                         className="w-full pl-10 pr-4 py-2.5 bg-[#141822] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50 transition"
                       />
                     </div>
@@ -487,17 +576,17 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
 
                 <div>
                   <label htmlFor={emailInputId} className="block text-xs font-semibold text-slate-300 mb-1">
-                    Primary Email ID <span className="text-cyan-400">*</span>
+                    {authMode === 'sign_in' ? 'Email Address or @Username' : 'Primary Email ID'} <span className="text-cyan-400">*</span>
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       id={emailInputId}
-                      type="email"
+                      type={authMode === 'sign_in' ? 'text' : 'email'}
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@domain.com"
+                      placeholder=""
                       className="w-full pl-10 pr-4 py-2.5 bg-[#141822] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50 transition"
                     />
                   </div>
@@ -526,7 +615,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder=""
                       className="w-full pl-10 pr-10 py-2.5 bg-[#141822] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50 transition"
                     />
                     <button
@@ -540,9 +629,23 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 </div>
 
                 {authError && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                    <span>{authError}</span>
+                  <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5 sm:mt-0" />
+                      <span className="leading-relaxed font-medium">{authError}</span>
+                    </div>
+                    {authError.includes('already registered') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode('sign_in');
+                          setAuthError(null);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold shrink-0 transition self-end sm:self-auto"
+                      >
+                        Sign In Now
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -565,24 +668,6 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   )}
                 </button>
               </form>
-
-              {/* Demo Pre-fill shortcut for instant reviewer testing */}
-              <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  id="btn-fast-demo-login"
-                  onClick={() => {
-                    setEmail('demo.creator@verilance.io');
-                    setFullName('Aarav Sharma');
-                    setPassword('password123');
-                    setUsername('aarav_pro');
-                    setRole('creator');
-                  }}
-                  className="text-xs text-slate-500 hover:text-cyan-400 transition underline underline-offset-4"
-                >
-                  ⚡ Fill Sample Credentials (Instant Testing)
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -617,7 +702,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-zA-Z0-9_]/g, ''))}
-                  placeholder="e.g., john_doe"
+                  placeholder=""
                   className={`w-full pl-8 pr-10 py-2.5 bg-[#141822] border rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition ${
                     usernameStatus === 'available'
                       ? 'border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/50'
@@ -783,7 +868,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   type="email"
                   value={recoveryEmail}
                   onChange={(e) => setRecoveryEmail(e.target.value)}
-                  placeholder="e.g., backup.recovery@gmail.com"
+                  placeholder=""
                   className="w-full pl-10 pr-4 py-2.5 bg-[#141822] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50 transition"
                 />
               </div>
@@ -882,17 +967,20 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
               </div>
 
               <div>
-                <label 
-                  htmlFor="id-doc-upload-field"
+                <button 
+                  type="button"
+                  id="btn-upload-doc-modal"
+                  onClick={handleTriggerDocUpload}
                   className="cursor-pointer text-xs font-bold px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white transition flex items-center gap-1.5"
                 >
                   <Upload className="w-3.5 h-3.5 text-cyan-400" />
                   <span>{isUploadingId ? 'Scanning...' : idDocName ? 'Replace File' : 'Select Document'}</span>
-                </label>
+                </button>
                 <input
                   id="id-doc-upload-field"
+                  ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
+                  accept=".pdf,.png,.jpg,.jpeg,image/*"
                   className="hidden"
                   onChange={handleSimulateIdUpload}
                 />
@@ -984,6 +1072,14 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
             </div>
           </div>
         )}
+        {/* Mobile Gallery Permission Dialog */}
+        <GalleryPermissionModal
+          isOpen={isGalleryPermModalOpen}
+          onClose={() => setIsGalleryPermModalOpen(false)}
+          onPermissionGranted={handleGalleryPermGranted}
+          mediaType="document"
+          sourceTitle="Government Identification Upload"
+        />
       </div>
     </div>
   );

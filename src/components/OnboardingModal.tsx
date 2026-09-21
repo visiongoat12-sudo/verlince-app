@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, UserRole } from '../types';
+import { GalleryPermissionModal } from './GalleryPermissionModal';
+import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
+import { checkEmailInDB } from '../lib/firebase';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -41,10 +44,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   user,
   onSaveProfile,
 }) => {
-  const [name, setName] = useState(user.name);
-  const [email, setEmail] = useState(user.email);
-  const [username, setUsername] = useState(user.username || '');
-  const [recoveryEmail, setRecoveryEmail] = useState(user.recoveryEmail || '');
+  const isGuest = user.id.startsWith('guest');
+  const [name, setName] = useState(isGuest ? '' : (user.name || ''));
+  const [email, setEmail] = useState(isGuest ? '' : (user.email || ''));
+  const [username, setUsername] = useState(isGuest ? '' : (user.username || ''));
+  const [recoveryEmail, setRecoveryEmail] = useState(isGuest ? '' : (user.recoveryEmail || ''));
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('available');
   const [usernameFeedback, setUsernameFeedback] = useState('');
   const [suggestedUsernames, setSuggestedUsernames] = useState<string[]>([]);
@@ -54,6 +58,26 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [hasPurchasedBadge, setHasPurchasedBadge] = useState(user.hasVerifiedBadge);
   const [badgeSuccessMessage, setBadgeSuccessMessage] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+
+  // Mobile Gallery Permission & File Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isGalleryPermModalOpen, setIsGalleryPermModalOpen] = useState(false);
+
+  const handleTriggerDocUpload = () => {
+    if (isMobileDevice() && !hasGalleryAccess()) {
+      setIsGalleryPermModalOpen(true);
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleGalleryPermGranted = () => {
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 150);
+  };
 
   // Live availability checker
   useEffect(() => {
@@ -109,7 +133,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     setTimeout(() => setBadgeSuccessMessage(false), 3000);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (usernameStatus === 'taken' || usernameStatus === 'invalid') {
@@ -121,10 +145,26 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       return;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    if (user.email && cleanEmail !== user.email.trim().toLowerCase()) {
+      setIsCheckingEmail(true);
+      try {
+        const isTaken = await checkEmailInDB(cleanEmail, user.id);
+        if (isTaken) {
+          setEmailError('This email address is already registered. Please sign in or use a different email.');
+          setIsCheckingEmail(false);
+          return;
+        }
+      } catch (err) {
+        console.warn(err);
+      }
+      setIsCheckingEmail(false);
+    }
+
     onSaveProfile({
       name,
       username: username.trim().toLowerCase(),
-      email,
+      email: cleanEmail,
       recoveryEmail: recoveryEmail.trim() || undefined,
       role,
       idDocumentName: idDocName,
@@ -186,7 +226,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Kabir Verma"
+                  placeholder=""
                   className="w-full pl-9 pr-3.5 py-2.5 bg-[#161a22] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50 transition"
                 />
               </div>
@@ -203,11 +243,22 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g., kabir@youtubecreators.in"
-                  className="w-full pl-9 pr-3.5 py-2.5 bg-[#161a22] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50 transition"
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setEmailError(null);
+                  }}
+                  placeholder=""
+                  className={`w-full pl-9 pr-3.5 py-2.5 bg-[#161a22] border rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition ${
+                    emailError ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/50' : 'border-white/10 focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50'
+                  }`}
                 />
               </div>
+              {emailError && (
+                <p className="text-[11px] text-red-400 mt-1 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{emailError}</span>
+                </p>
+              )}
             </div>
           </div>
 
@@ -226,7 +277,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-zA-Z0-9_]/g, ''))}
-                  placeholder="username"
+                  placeholder=""
                   className={`w-full pl-8 pr-9 py-2.5 bg-[#161a22] border rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition ${
                     usernameStatus === 'available'
                       ? 'border-emerald-500/60 focus:ring-emerald-500/50'
@@ -282,7 +333,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     setRecoveryEmail(e.target.value);
                     setRecoveryError(null);
                   }}
-                  placeholder="backup.recovery@gmail.com"
+                  placeholder=""
                   className="w-full pl-9 pr-3.5 py-2.5 bg-[#161a22] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50 transition"
                 />
               </div>
@@ -371,17 +422,20 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                <label 
-                  htmlFor="id-upload-input-modal" 
+                <button 
+                  type="button"
+                  id="btn-upload-onboarding-modal"
+                  onClick={handleTriggerDocUpload}
                   className="cursor-pointer text-xs font-medium px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white transition flex items-center gap-1.5"
                 >
-                  <Upload className="w-3.5 h-3.5" />
-                  {isUploading ? 'Validating...' : idDocName ? 'Replace Document' : 'Select ID File'}
-                </label>
+                  <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{isUploading ? 'Validating...' : idDocName ? 'Replace Document' : 'Select ID File'}</span>
+                </button>
                 <input
                   id="id-upload-input-modal"
+                  ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
+                  accept=".pdf,.png,.jpg,.jpeg,image/*"
                   className="hidden"
                   onChange={handleSimulateIdUpload}
                 />
@@ -453,6 +507,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </button>
           </div>
         </form>
+        {/* Mobile Gallery Permission Dialog */}
+        <GalleryPermissionModal
+          isOpen={isGalleryPermModalOpen}
+          onClose={() => setIsGalleryPermModalOpen(false)}
+          onPermissionGranted={handleGalleryPermGranted}
+          mediaType="document"
+          sourceTitle="Government Identification Upload"
+        />
       </div>
     </div>
   );

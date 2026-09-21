@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 import { subscribeDeals } from '../lib/firebase';
+import { GalleryPermissionModal } from './GalleryPermissionModal';
+import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 
 interface TransactionItem {
   id: string;
@@ -46,6 +48,7 @@ interface ProfileVerificationDashboardProps {
   onUpdateProfile?: (updated: Partial<UserProfile>) => void;
   onOpenAuthGate?: () => void;
   onOpenEditModal?: () => void;
+  onResetData?: () => void;
 }
 
 export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboardProps> = ({
@@ -53,6 +56,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   onUpdateProfile,
   onOpenAuthGate,
   onOpenEditModal,
+  onResetData,
 }) => {
   // 1. HERO PROFILE STATE (Dynamic from real user)
   const [fullName, setFullName] = useState(currentUser?.name || '');
@@ -131,6 +135,24 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   }, [currentUser]);
 
   const [tableFilter, setTableFilter] = useState<'all' | 'Completed' | 'Escrow Released' | 'Disputed'>('all');
+
+  // Mobile Gallery Permission & File Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isGalleryPermModalOpen, setIsGalleryPermModalOpen] = useState(false);
+
+  const handleTriggerUpload = () => {
+    if (isMobileDevice() && !hasGalleryAccess()) {
+      setIsGalleryPermModalOpen(true);
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleGalleryPermGranted = () => {
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 150);
+  };
 
   // Handlers
   const handleToggleRole = () => {
@@ -354,6 +376,17 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                   <span>Switch User</span>
                 </button>
               )}
+
+              {onResetData && (
+                <button
+                  id="btn-reset-data-profile"
+                  onClick={onResetData}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs text-amber-300 transition flex items-center gap-1"
+                  title="Reset all data and storage for a clean fresh slate"
+                >
+                  <span>Reset All Data</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -410,7 +443,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 required
                 value={legalName}
                 onChange={(e) => setLegalName(e.target.value)}
-                placeholder="As per Government Identification Document"
+                placeholder=""
                 className="w-full bg-[#0e0e13] border border-white/[0.09] rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 transition"
               />
             </div>
@@ -438,6 +471,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 Upload Government ID Document <span className="text-cyan-400">*</span>
               </label>
               <div
+                onClick={handleTriggerUpload}
                 onDragOver={(e) => {
                   e.preventDefault();
                   setIsDragging(true);
@@ -454,10 +488,11 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
               >
                 <input
                   id="id-file-upload-input"
+                  ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
+                  accept=".pdf,.png,.jpg,.jpeg,image/*"
                   onChange={handleFileUpload}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  className="hidden"
                 />
 
                 <div className="flex flex-col items-center justify-center gap-2">
@@ -500,7 +535,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                   required
                   value={portfolioLink}
                   onChange={(e) => setPortfolioLink(e.target.value)}
-                  placeholder="e.g., https://youtube.com/@mychannel or https://behance.net/portfolio"
+                  placeholder=""
                   className="w-full bg-[#0e0e13] border border-white/[0.09] rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 transition font-mono text-xs"
                 />
               </div>
@@ -951,6 +986,15 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
           </div>
         </div>
       )}
+
+      {/* Mobile Gallery Permission Dialog */}
+      <GalleryPermissionModal
+        isOpen={isGalleryPermModalOpen}
+        onClose={() => setIsGalleryPermModalOpen(false)}
+        onPermissionGranted={handleGalleryPermGranted}
+        mediaType="document"
+        sourceTitle="Government ID Document Upload"
+      />
     </div>
   );
 };

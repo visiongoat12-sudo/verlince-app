@@ -38,16 +38,19 @@ import {
   EyeOff,
   Lock,
   Clock,
+  MessageSquare,
   Image as ImageIcon,
   Flame,
   X
 } from 'lucide-react';
 import { WatermarkVideoPreview } from './WatermarkVideoPreview';
 import { ViewOnceSecurityModal } from './ViewOnceSecurityModal';
+import { GalleryPermissionModal } from './GalleryPermissionModal';
+import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 
 interface ChatSectionProps {
   currentUser: UserProfile;
-  activeChannel: Channel;
+  activeChannel?: Channel | null;
   channels: Channel[];
   onSelectChannel: (channel: Channel) => void;
   messages: ChatMessage[];
@@ -93,6 +96,34 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
   const [viewOnceTitle, setViewOnceTitle] = useState('Teaser Hook 4K Edit Proof');
   const [viewOnceCaption, setViewOnceCaption] = useState('1-Time protected draft cut. Disappears after viewing.');
   const [viewOnceDuration, setViewOnceDuration] = useState(20);
+
+  // Mobile Gallery Permission for Chat Media Attachments
+  const chatFileInputRef = useRef<HTMLInputElement>(null);
+  const [isGalleryPermModalOpen, setIsGalleryPermModalOpen] = useState(false);
+
+  const handleTriggerChatAttach = () => {
+    if (isMobileDevice() && !hasGalleryAccess()) {
+      setIsGalleryPermModalOpen(true);
+    } else {
+      chatFileInputRef.current?.click();
+    }
+  };
+
+  const handleGalleryPermGranted = () => {
+    setTimeout(() => {
+      chatFileInputRef.current?.click();
+    }, 150);
+  };
+
+  const handleChatFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      const icon = file.type.startsWith('video') ? '🎥' : file.type.startsWith('image') ? '🖼️' : '📎';
+      onSendMessage(`${icon} [Attached: ${file.name} • ${sizeMb} MB]`);
+      e.target.value = '';
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -155,6 +186,17 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });
+
+  const safeActiveChannel: Channel = activeChannel || channels[0] || {
+    id: 'ch-default',
+    name: 'Direct Escrow Workspace',
+    subtitle: 'End-to-End Encrypted',
+    avatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+    isGroup: false,
+    unreadCount: 0,
+    isOnline: true,
+    lastActive: 'Active',
+  };
 
   const popularEmojis = ['🤝', '🔥', '🎬', '🔒', '⚡', '👍', '✨', '💻', '💯', '🚀', '👀', '❤️'];
 
@@ -261,51 +303,65 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
 
         {/* Channels List */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-          {filteredChannels.map((channel) => {
-            const isSelected = activeChannel.id === channel.id;
-            return (
-              <button
-                key={channel.id}
-                onClick={() => onSelectChannel(channel)}
-                className={`w-full p-2.5 rounded-xl text-left transition flex items-center gap-3 ${
-                  isSelected
-                    ? 'bg-cyan-950/30 border border-cyan-500/30 text-white'
-                    : 'hover:bg-white/5 text-slate-300 border border-transparent'
-                }`}
-              >
-                <div className="relative shrink-0">
-                  <img 
-                    src={channel.avatar} 
-                    alt={channel.name} 
-                    className="w-10 h-10 rounded-xl object-cover ring-1 ring-white/10"
-                  />
-                  {channel.isOnline && (
-                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0b0e14]" />
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white truncate">
-                      {channel.name}
-                    </span>
-                    <span className="text-[10px] text-slate-500">
-                      {channel.lastActive}
-                    </span>
+          {filteredChannels.length === 0 ? (
+            <div className="py-12 px-4 text-center space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-slate-500">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-slate-300">No active chats</p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Connect with creators in the Marketplace to start a conversation.
+                </p>
+              </div>
+            </div>
+          ) : (
+            filteredChannels.map((channel) => {
+              const isSelected = safeActiveChannel.id === channel.id;
+              return (
+                <button
+                  key={channel.id}
+                  onClick={() => onSelectChannel(channel)}
+                  className={`w-full p-2.5 rounded-xl text-left transition flex items-center gap-3 ${
+                    isSelected
+                      ? 'bg-cyan-950/30 border border-cyan-500/30 text-white'
+                      : 'hover:bg-white/5 text-slate-300 border border-transparent'
+                  }`}
+                >
+                  <div className="relative shrink-0">
+                    <img 
+                      src={channel.avatar} 
+                      alt={channel.name} 
+                      className="w-10 h-10 rounded-xl object-cover ring-1 ring-white/10"
+                    />
+                    {channel.isOnline && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0b0e14]" />
+                    )}
                   </div>
-                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                    {channel.subtitle}
-                  </p>
-                </div>
 
-                {channel.unreadCount > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-bold flex items-center justify-center shrink-0">
-                    {channel.unreadCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white truncate">
+                        {channel.name}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {channel.lastActive}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                      {channel.subtitle}
+                    </p>
+                  </div>
+
+                  {channel.unreadCount > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-bold flex items-center justify-center shrink-0">
+                      {channel.unreadCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -319,8 +375,8 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
           <div className="flex items-center gap-3">
             <div className="relative">
               <img 
-                src={activeChannel.avatar} 
-                alt={activeChannel.name} 
+                src={safeActiveChannel.avatar} 
+                alt={safeActiveChannel.name} 
                 className="w-10 h-10 rounded-xl object-cover ring-1 ring-cyan-500/30"
               />
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0d1017]" />
@@ -329,7 +385,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-white tracking-wide font-['Space_Grotesk']">
-                  {activeChannel.name}
+                  {safeActiveChannel.name}
                 </h3>
                 <span className="px-1.5 py-0.2 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[9px] font-bold flex items-center gap-0.5">
                   <ShieldCheck className="w-2.5 h-2.5" />
@@ -442,8 +498,27 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
             </div>
           )}
 
-          {/* Render All Messages */}
-          {messages.map((msg) => {
+          {/* Render All Messages or Clean Slate Empty State */}
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center min-h-[320px] py-12 px-6 text-center space-y-4 my-auto">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500/10 to-teal-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)]">
+                <ShieldCheck className="w-7 h-7" />
+              </div>
+              <div className="space-y-1.5 max-w-sm">
+                <h4 className="text-sm font-bold text-white tracking-wide font-['Space_Grotesk']">
+                  Clean Slate • Escrow Chat Ready
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  No chat history recorded. Send a message below, attach files, or initialize a verified milestone agreement with <strong className="text-cyan-300">Post Deal</strong>.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 pt-2 text-[11px] text-slate-500">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Anti-Screenshot & VAKRA Sentinel Active</span>
+              </div>
+            </div>
+          ) : (
+            messages.map((msg) => {
             const isMe = msg.senderRole === currentUser.role || msg.senderId === currentUser.id;
             const isVakra = msg.senderRole === 'vakra';
             const isSystem = msg.senderRole === 'system';
@@ -712,7 +787,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                 </div>
               </div>
             );
-          })}
+          }))}
 
           {/* Inline Watermarked Video Preview if work submitted */}
           {workDelivery && (
@@ -822,15 +897,23 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
               </span>
             </button>
 
-            {/* Attachment Button */}
+            {/* Attachment Button with Mobile Gallery Permission */}
             <button
               type="button"
-              onClick={() => onSendMessage("📎 [Attached: RAW_Footage_Camera_B_Roll.zip • 1.8 GB]")}
+              id="btn-chat-attach-media"
+              onClick={handleTriggerChatAttach}
               className="p-2.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 transition shrink-0"
-              title="Attach media or footage"
+              title="Attach media, photos, or footage"
             >
               <Paperclip className="w-4 h-4" />
             </button>
+            <input
+              type="file"
+              ref={chatFileInputRef}
+              accept="image/*,video/*,.pdf,.zip"
+              className="hidden"
+              onChange={handleChatFileSelected}
+            />
 
             {/* Emoji & Sticker Picker Icon */}
             <button
@@ -1042,6 +1125,14 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
             onCloseAndExpire={() => handleCloseAndExpireViewOnce(activeViewOnceMedia.id)}
           />
         )}
+        {/* Mobile Gallery Permission Dialog */}
+        <GalleryPermissionModal
+          isOpen={isGalleryPermModalOpen}
+          onClose={() => setIsGalleryPermModalOpen(false)}
+          onPermissionGranted={handleGalleryPermGranted}
+          mediaType="all"
+          sourceTitle="Chat Media & Footage Upload"
+        />
       </div>
     </div>
   );

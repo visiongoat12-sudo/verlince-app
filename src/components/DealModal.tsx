@@ -116,10 +116,10 @@ export const DealModal: React.FC<DealModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
       <div 
         id="create-deal-modal"
-        className="relative w-full max-w-xl bg-[#0f131a] border border-cyan-500/30 rounded-2xl p-6 sm:p-7 shadow-2xl text-slate-100 my-6"
+        className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto custom-scrollbar bg-[#0f131a] border border-cyan-500/30 rounded-2xl p-4 sm:p-7 shadow-2xl text-slate-100 my-auto"
       >
         {/* Glow corner */}
         <div className="absolute top-0 right-0 w-36 h-36 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />

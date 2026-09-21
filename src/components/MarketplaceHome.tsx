@@ -638,7 +638,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                     required
                     value={newCreatorName}
                     onChange={(e) => setNewCreatorName(e.target.value)}
-                    placeholder="e.g., Vikram Sen"
+                    placeholder=""
                     className="w-full px-3 py-2 bg-[#171b26] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60"
                   />
                 </div>
@@ -654,7 +654,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                       required
                       value={newCreatorUsername}
                       onChange={(e) => setNewCreatorUsername(e.target.value)}
-                      placeholder="vikram_cuts"
+                      placeholder=""
                       className="w-full pl-7 pr-3 py-2 bg-[#171b26] border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60"
                     />
                   </div>
