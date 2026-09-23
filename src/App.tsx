@@ -18,6 +18,8 @@ import { ChatSection } from './components/ChatSection';
 import { ProfileVerificationDashboard } from './components/ProfileVerificationDashboard';
 import { MarketplaceHome } from './components/MarketplaceHome';
 import { VerilanceLogo } from './components/VerilanceLogo';
+import { RazorpaySecureCheckoutModal, RazorpayPaymentResult } from './components/RazorpaySecureCheckoutModal';
+import { WhyVerilanceModal } from './components/WhyVerilanceModal';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -98,6 +100,9 @@ export default function App() {
 
   // 5. Active Deal State (Clean Slate: null / 0 active deals initially)
   const [activeDeal, setActiveDeal] = useState<DealAgreement | null>(null);
+  const [isRazorpayCheckoutOpen, setIsRazorpayCheckoutOpen] = useState(false);
+  const [pendingFundingDeal, setPendingFundingDeal] = useState<DealAgreement | null>(null);
+  const [isWhyVerilanceOpen, setIsWhyVerilanceOpen] = useState(false);
 
   // 6. Work Delivery State (Clean Slate: null initially)
   const [workDelivery, setWorkDelivery] = useState<WorkDelivery | null>(null);
@@ -322,27 +327,72 @@ export default function App() {
     setMessages((prev) => [...prev, alertMsg]);
   };
 
-  // Confirm Deal from Modal
-  const handleConfirmDeal = (deal: DealAgreement) => {
+  // Confirm Deal from Modal with optional immediate funding
+  const handleConfirmDeal = (deal: DealAgreement, triggerPaymentImmediately: boolean = true) => {
     setActiveDeal(deal);
     setWorkDelivery(null); // Reset delivery state for new deal
+
+    if (triggerPaymentImmediately) {
+      setPendingFundingDeal(deal);
+      setIsRazorpayCheckoutOpen(true);
+    } else {
+      showNotification({
+        title: '📋 Escrow Contract Drafted',
+        description: `Contract for ₹${deal.amount.toLocaleString('en-IN')} drafted. Ready for Razorpay escrow funding.`,
+        type: 'info',
+      });
+      const draftMsg: ChatMessage = {
+        id: `sys-${Date.now()}`,
+        senderId: 'trustway-system',
+        senderName: 'Trustway Protocol',
+        senderRole: 'system',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'deal_invite',
+        text: `📋 ESCROW AGREEMENT DRAFTED: ₹${deal.amount.toLocaleString('en-IN')} for ${deal.serviceType}. Awaiting escrow funding deposit.`,
+      };
+      setMessages((prev) => [...prev, draftMsg]);
+    }
+  };
+
+  // Handle successful Razorpay Escrow Authorization
+  const handleRazorpayPaymentSuccess = (result: RazorpayPaymentResult) => {
+    setActiveDeal((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        status: 'escrow_secured',
+        paymentMethod: `Razorpay (${result.method})`,
+        history: [
+          ...prev.history,
+          {
+            id: `h-pay-${Date.now()}`,
+            title: `Funds Secured in Escrow 🔒 (ID: ${result.paymentId})`,
+            detail: `₹${result.amount.toLocaleString('en-IN')} authorized via Razorpay ${result.method}. VERILANCE 3% commission (₹${result.commissionFee}) reserved; ₹${result.netPayout.toLocaleString('en-IN')} escrow-locked for freelancer.`,
+            timestamp: result.timestamp,
+            type: 'secure',
+          },
+        ],
+      };
+    });
+
     showNotification({
-      title: '🤝 Escrow Locked & Funded',
-      description: `₹${deal.amount.toLocaleString('en-IN')} secured for ${deal.serviceType}. 3% commission protected.`,
+      title: '🔒 Razorpay Escrow Secured',
+      description: `₹${result.amount.toLocaleString('en-IN')} authorized & locked in Escrow. 3% platform commission allocated.`,
       type: 'escrow',
     });
-    
-    // Add system notification message to chat
-    const dealSystemMsg: ChatMessage = {
-      id: `sys-${Date.now()}`,
+
+    const fundedMsg: ChatMessage = {
+      id: `pay-${Date.now()}`,
       senderId: 'trustway-system',
       senderName: 'Trustway Protocol',
       senderRole: 'system',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: result.timestamp,
       type: 'deal_invite',
-      text: `🤝 ESCROW LOCKED: ₹${deal.amount.toLocaleString('en-IN')} deposited for ${deal.serviceType}. 3% commission (₹${deal.commissionFee}) safely recorded. Deadline: ${deal.deadline}.`,
+      text: `🔒 ESCROW SECURED VIA RAZORPAY: ₹${result.amount.toLocaleString('en-IN')} authorized (Ref: ${result.paymentId}). VERILANCE 3% insurance fee (₹${result.commissionFee}) allocated. ₹${result.netPayout.toLocaleString('en-IN')} will disburse to Editor upon your watermarked proof approval.`,
     };
-    setMessages((prev) => [...prev, dealSystemMsg]);
+    setMessages((prev) => [...prev, fundedMsg]);
+    setIsRazorpayCheckoutOpen(false);
+    setPendingFundingDeal(null);
   };
 
   // Submit Work (Freelancer role)
@@ -408,6 +458,24 @@ export default function App() {
   const handleApproveAndRelease = () => {
     if (!activeDeal) return;
 
+    // Check if the recipient / editor has completed KYC verification
+    // In VERILANCE, escrow payouts require KYC verification to be approved ('verified')
+    const isEditorKycVerified = currentUser.role === 'editor' 
+      ? currentUser.kycStatus === 'verified'
+      : true; // In bilateral scenario, ensure KYC status is verified
+
+    // If editor has not completed KYC, block escrow release
+    if (currentUser.role === 'editor' && currentUser.kycStatus !== 'verified') {
+      showNotification({
+        title: '⚠️ KYC Verification Required',
+        description: 'You must complete and get your KYC Verification approved in Profile Settings before escrow funds can be released to your bank account.',
+        type: 'alert',
+      });
+      soundEffects.playToggleSound();
+      setCurrentView('profile');
+      return;
+    }
+
     setActiveDeal((prev) => {
       if (!prev) return null;
       return {
@@ -418,7 +486,7 @@ export default function App() {
           {
             id: `h-release-${Date.now()}`,
             title: 'Funds Released & Transferred ⚡',
-            detail: `Client authorized release. ₹${prev.netPayout.toLocaleString('en-IN')} disbursed to Editor wallet. Watermark cleared.`,
+            detail: `Authorized release. ₹${prev.netPayout.toLocaleString('en-IN')} disbursed to KYC-verified bank account. Watermark cleared.`,
             timestamp: 'Just now',
             type: 'released',
           },
@@ -673,6 +741,22 @@ export default function App() {
               VAKRA
             </span>
           </button>
+
+          <button
+            id="nav-tab-why-verilance"
+            onClick={() => {
+              soundEffects.playNavTabClick();
+              setIsWhyVerilanceOpen(true);
+            }}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-cyan-400/90 hover:text-cyan-300 hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/30"
+            title="Explore Why VERILANCE, 3% Fee Calculator & Core USPs"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Why VERILANCE</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold">
+              3%
+            </span>
+          </button>
         </div>
 
         {/* Center / Right Control Badges */}
@@ -878,6 +962,7 @@ export default function App() {
             }}
             currentUserRole={currentUser.role}
             onToggleRole={handleToggleUserRole}
+            onOpenWhyVerilance={() => setIsWhyVerilanceOpen(true)}
           />
         </main>
       ) : currentView === 'profile' ? (
@@ -918,6 +1003,13 @@ export default function App() {
                 onOpenDealModal={() => setIsDealModalOpen(true)}
                 onSubmitWork={handleSubmitWork}
                 onApproveAndRelease={handleApproveAndRelease}
+                onFundEscrow={() => {
+                  if (activeDeal) {
+                    setPendingFundingDeal(activeDeal);
+                    setIsRazorpayCheckoutOpen(true);
+                  }
+                }}
+                onRaiseDispute={handleRaiseDispute}
                 activeDeal={activeDeal}
                 workDelivery={workDelivery}
                 onToggleUserRole={handleToggleUserRole}
@@ -932,6 +1024,12 @@ export default function App() {
               deal={activeDeal}
               currentUser={currentUser}
               onOpenCreateDeal={() => setIsDealModalOpen(true)}
+              onFundEscrow={() => {
+                if (activeDeal) {
+                  setPendingFundingDeal(activeDeal);
+                  setIsRazorpayCheckoutOpen(true);
+                }
+              }}
               onSubmitWork={handleSubmitWork}
               onApproveAndRelease={handleApproveAndRelease}
               onRaiseDispute={handleRaiseDispute}
@@ -962,6 +1060,13 @@ export default function App() {
                     onOpenCreateDeal={() => {
                       setIsMobileSidebarOpen(false);
                       setIsDealModalOpen(true);
+                    }}
+                    onFundEscrow={() => {
+                      setIsMobileSidebarOpen(false);
+                      if (activeDeal) {
+                        setPendingFundingDeal(activeDeal);
+                        setIsRazorpayCheckoutOpen(true);
+                      }
                     }}
                     onSubmitWork={() => {
                       setIsMobileSidebarOpen(false);
@@ -1008,6 +1113,41 @@ export default function App() {
         initialValues={dealInitialValues}
         clientName={currentUser.role === 'creator' ? (currentUser.name || 'Client') : 'Client Partner'}
         freelancerName={currentUser.role === 'editor' ? (currentUser.name || 'Freelancer') : 'Editor Partner'}
+      />
+
+      {/* Razorpay Authentic Secure Escrow Gateway Modal */}
+      {isRazorpayCheckoutOpen && pendingFundingDeal && (
+        <RazorpaySecureCheckoutModal
+          isOpen={isRazorpayCheckoutOpen}
+          onClose={() => {
+            setIsRazorpayCheckoutOpen(false);
+            setPendingFundingDeal(null);
+          }}
+          dealTitle={pendingFundingDeal.title || pendingFundingDeal.serviceType}
+          beneficiaryName={
+            pendingFundingDeal.senderRole === 'client'
+              ? pendingFundingDeal.receiverName
+              : pendingFundingDeal.senderName
+          }
+          amount={pendingFundingDeal.amount}
+          commissionFee={pendingFundingDeal.commissionFee}
+          netPayout={pendingFundingDeal.netPayout}
+          onPaymentSuccess={handleRazorpayPaymentSuccess}
+        />
+      )}
+
+      {/* Why VERILANCE Interactive High-Impact Modal with 3% Calculator */}
+      <WhyVerilanceModal
+        isOpen={isWhyVerilanceOpen}
+        onClose={() => setIsWhyVerilanceOpen(false)}
+        onOpenDealModal={() => {
+          setIsWhyVerilanceOpen(false);
+          setIsDealModalOpen(true);
+        }}
+        onOpenKyc={() => {
+          setIsWhyVerilanceOpen(false);
+          setCurrentView('profile');
+        }}
       />
 
       {/* 4. MOBILE BOTTOM NAVIGATION BAR (Touch-optimized for smartphones & tablets) */}
@@ -1062,6 +1202,19 @@ export default function App() {
             <Handshake className="w-3.5 h-3.5" />
           </div>
           <span className="text-[10px] tracking-tight font-bold">Post Deal</span>
+        </button>
+
+        <button
+          id="mobile-nav-why-verilance"
+          onClick={() => {
+            soundEffects.playNavTabClick();
+            setIsWhyVerilanceOpen(true);
+          }}
+          className="flex-1 py-1.5 px-1 flex flex-col items-center justify-center min-h-[44px] rounded-xl text-cyan-400 hover:text-cyan-300 transition"
+          title="Why VERILANCE"
+        >
+          <Sparkles className="w-4 h-4 mb-1" />
+          <span className="text-[10px] tracking-tight font-bold">Why 3%</span>
         </button>
 
         <button

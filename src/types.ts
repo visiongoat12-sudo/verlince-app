@@ -12,12 +12,28 @@ export interface UserProfile {
   badgePurchasedAt?: string;
   badgeExpiresAt?: string;
   avatar: string;
-  kycStatus: 'verified' | 'pending' | 'unverified';
+  kycStatus: 'verified' | 'pending' | 'unverified' | 'rejected';
   walletBalance: number;
+  kycData?: {
+    legalName?: string;
+    idType?: string;
+    idNumber?: string;
+    docFrontPreview?: string;
+    docBackPreview?: string;
+    selfiePreview?: string;
+    bankAccount?: string;
+    bankHolderName?: string;
+    bankIfsc?: string;
+    submittedAt?: string;
+    reviewedAt?: string;
+    rejectionReason?: string;
+  };
 }
 
 export type DealStatus = 
   | 'no_deal'
+  | 'pending_funding'
+  | 'pending'
   | 'escrow_secured'
   | 'work_submitted'
   | 'released'
@@ -63,7 +79,7 @@ export interface DealAgreement {
   netPayout: number;
   deadline: string;
   description: string;
-  paymentMethod: 'UPI' | 'PayPal' | 'Card';
+  paymentMethod: 'UPI' | 'PayPal' | 'Card' | string;
   status: DealStatus;
   createdAt: string;
   workDelivery?: WorkDelivery;

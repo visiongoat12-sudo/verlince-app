@@ -53,6 +53,7 @@ interface MarketplaceHomeProps {
   onOpenChat: (talentName?: string) => void;
   currentUserRole: UserRole;
   onToggleRole: () => void;
+  onOpenWhyVerilance?: () => void;
 }
 
 export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
@@ -61,6 +62,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
   onOpenChat,
   currentUserRole,
   onToggleRole,
+  onOpenWhyVerilance,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -271,19 +273,33 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
               <span>Find work</span>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-cyan-400 transition" />
             </div>
-            <a href="#why-verilance" className="hover:text-cyan-300 transition">
+            <button
+              onClick={() => {
+                soundEffects.playNavTabClick();
+                if (onOpenWhyVerilance) onOpenWhyVerilance();
+              }}
+              className="hover:text-cyan-300 transition cursor-pointer font-medium"
+            >
               Why Verilance
-            </a>
+            </button>
             <a href="#pricing-plans" className="hover:text-cyan-300 transition">
               Enterprise & Pricing
             </a>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px] font-semibold">
+            <button
+              onClick={() => {
+                soundEffects.playNavTabClick();
+                if (onOpenWhyVerilance) onOpenWhyVerilance();
+              }}
+              className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[11px] font-semibold transition cursor-pointer"
+              title="Click to see why VERILANCE 3% Escrow protects you"
+            >
               <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
               <span>3% Transparent Escrow</span>
-            </div>
+              <Sparkles className="w-3 h-3 text-cyan-400" />
+            </button>
 
             <button
               onClick={() => setIsCreateModalOpen(true)}
@@ -722,6 +738,73 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
         </div>
       </section>
 
+      {/* 5.5. DYNAMIC 'WHY VERILANCE' SPOTLIGHT & INTERACTIVE MODAL TRIGGER */}
+      <section id="why-verilance" className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="relative rounded-3xl bg-gradient-to-br from-[#0c101a] via-[#101524] to-[#0a0d14] border border-cyan-500/30 p-6 sm:p-10 shadow-[0_20px_60px_rgba(0,0,0,0.7),0_0_30px_rgba(6,182,212,0.15)] overflow-hidden">
+          {/* Ambient Cyber glow */}
+          <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+            <div className="space-y-4 max-w-2xl text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold tracking-wide uppercase">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <span>The VERILANCE Advantage</span>
+              </div>
+              <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight font-['Space_Grotesk'] leading-tight">
+                Why 10,000+ Creators & VFX Editors Trust <span className="bg-gradient-to-r from-cyan-400 to-teal-300 bg-clip-text text-transparent">VERILANCE</span>
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Traditional platforms take 20% of your earnings and leave you vulnerable to chargebacks or leaked preview files. VERILANCE combines <strong>3% micro-commissions</strong>, <strong>view-once anti-screen protection</strong>, and <strong>autonomous VAKRA AI dispute arbitration</strong>.
+              </p>
+
+              {/* USP mini pills */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
+                <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-center">
+                  <span className="block text-cyan-400 font-black text-sm font-mono">3% Fee</span>
+                  <span className="text-[10px] text-slate-400">vs 20% typical</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-center">
+                  <span className="block text-teal-400 font-black text-sm font-mono">View Once</span>
+                  <span className="text-[10px] text-slate-400">No timers / leaks</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-center">
+                  <span className="block text-purple-400 font-black text-sm font-mono">VAKRA AI</span>
+                  <span className="text-[10px] text-slate-400">Moveable HUD</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-center">
+                  <span className="block text-emerald-400 font-black text-sm font-mono">100% Escrow</span>
+                  <span className="text-[10px] text-slate-400">KYC guaranteed</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 w-full sm:w-auto">
+              <button
+                id="btn-explore-why-verilance"
+                onClick={() => {
+                  soundEffects.playTabClick();
+                  if (onOpenWhyVerilance) onOpenWhyVerilance();
+                }}
+                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:brightness-110 active:scale-98 text-slate-950 font-black text-xs sm:text-sm tracking-wide shadow-xl shadow-cyan-500/25 transition flex items-center justify-center gap-2 cursor-pointer group"
+              >
+                <Sparkles className="w-4 h-4 text-slate-950 group-hover:rotate-12 transition-transform" />
+                <span>Explore Why VERILANCE & 3% Calculator</span>
+                <ArrowRight className="w-4 h-4 text-slate-950 group-hover:translate-x-1 transition-transform" />
+              </button>
+
+              <button
+                onClick={onOpenDealModal}
+                className="px-5 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs transition flex items-center justify-center gap-2"
+              >
+                <HandshakeIcon className="w-4 h-4 text-cyan-400" />
+                <span>Create Protected Escrow Deal</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 6. "CHOOSE HOW YOU WANT TO HIRE" (UPWORK VIDEO PRICING PLANS) */}
       <section id="pricing-plans" className="py-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-8">
         <div className="text-center max-w-2xl mx-auto space-y-3">
@@ -972,6 +1055,10 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                               VERIFIED PRO
                             </span>
                           )}
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold flex items-center gap-1" title="Government ID & Bank Account KYC Verified">
+                            <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
+                            KYC VERIFIED
+                          </span>
                         </div>
                         <p className="text-xs text-slate-400">
                           {talent.role}

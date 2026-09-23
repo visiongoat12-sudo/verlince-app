@@ -216,11 +216,17 @@ export const VakraFloatingAssistant: React.FC<VakraFloatingAssistantProps> = ({
     setIsTyping(true);
 
     try {
-      // 1. Check if user is asking to draft an agreement
+      // 1. Check intent flags
       const isDraftRequest = /draft|contract|agreement|milestone|proposal|hire|terms/i.test(query);
-      const isCommissionRequest = /commission|3%|fee|cut|payout|charges|razorpay|stripe/i.test(query);
-      const isDisputeRequest = /dispute|refund|cheat|scam|stolen|unpaid|cancel|arbitration/i.test(query);
-      const isViewOnceRequest = /view once|1 time|one time|drm|screenshot|blur|timer/i.test(query);
+      const isCommissionRequest = /commission|3%|fee|cut|payout|charges|razorpay|stripe|split/i.test(query);
+      const isCalculatorRequest = /calc|calculate|calculator|math|formula/i.test(query) || (isCommissionRequest && /[0-9]/.test(query));
+      const isDisputeRequest = /dispute|refund|cheat|scam|stolen|unpaid|cancel|arbitration|mediator|freeze/i.test(query);
+      const isSupportRequest = /support|help|contact|human|agent|ticket|email|complaint/i.test(query);
+      const isViewOnceRequest = /view once|1 time|one time|drm|screenshot|blur|timer|watermark/i.test(query);
+
+      // Extract numeric amount if present
+      const amountMatch = query.replace(/,/g, '').match(/(?:₹|rs\.?|inr)?\s*(\d{3,7})/i);
+      const customAmount = amountMatch ? parseInt(amountMatch[1], 10) : null;
 
       let aiResponseText = '';
       let draftPayload: AIMessage['draftProposal'] | undefined;
@@ -259,15 +265,25 @@ Keep your answers razor-sharp, cyberpunk-themed, helpful, professional, and conc
       // If no response from external SDK, generate authoritative instant response
       if (!aiResponseText) {
         if (isDraftRequest) {
+          const dealBudget = customAmount || 5000;
+          const commission = Math.round(dealBudget * 0.03);
+          const net = dealBudget - commission;
           draftPayload = {
-            serviceType: 'YouTube 4K Video Editing & Color Grade',
-            amount: 3500,
-            deadline: '2026-09-28',
-            description: '10-minute dynamic YouTube cut with SFX, motion graphics, 2 revision cycles, and watermarked proof safeguard.',
+            serviceType: /reel|short|tiktok/i.test(query) ? 'Short-Form Reels / Shorts Viral Package' : 'YouTube 4K Long-Form Editing & Color Grade',
+            amount: dealBudget,
+            deadline: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+            description: 'Dynamic pacing cut with SFX, motion typography, 2 revision passes, and diagonal preview safeguard.',
           };
-          aiResponseText = `🛡️ [VAKRA CONTRACT SYNTHESIZER]\nI have constructed a secure Smart Escrow Agreement for you:\n• Service: YouTube 4K Video Editing\n• Total Escrow: ₹3,500 (Editor Payout: ₹3,395 after 3% insurance fee ₹105)\n• Delivery: 28 September 2026\n• Guardrails: Watermarked draft delivery + View Once preview proof.\n\nClick "Apply to Escrow Deal" below to populate the contract builder immediately.`;
+          aiResponseText = `🛡️ [VAKRA CONTRACT SYNTHESIZER]\nI have constructed a secure Smart Escrow Agreement for you:\n• Service: ${draftPayload.serviceType}\n• Total Escrow: ₹${dealBudget.toLocaleString('en-IN')}\n• VERILANCE 3% Escrow Fee: ₹${commission.toLocaleString('en-IN')}\n• Freelancer Payout (97%): ₹${net.toLocaleString('en-IN')}\n• Guardrails: Watermarked draft delivery + View Once preview proof.\n\nClick "Apply to Escrow Deal" below to populate the contract builder immediately.`;
+        } else if (isCalculatorRequest || (isCommissionRequest && customAmount)) {
+          const val = customAmount || 10000;
+          const fee = Math.round(val * 0.03);
+          const payout = val - fee;
+          aiResponseText = `💰 [VERILANCE 3% ESCROW CALCULATOR]\nFor a project budget of ₹${val.toLocaleString('en-IN')}:\n• Total Client Escrow Deposit: ₹${val.toLocaleString('en-IN')}\n• Platform Insurance Fee (3%): ₹${fee.toLocaleString('en-IN')}\n• Freelancer Net Payout (97%): ₹${payout.toLocaleString('en-IN')}\n\n* The 3% insurance fee covers multi-sig lock, encrypted DRM View Once buffering, and human mediator dispute arbitration.`;
         } else if (isCommissionRequest) {
           aiResponseText = `⚡ [VERILANCE ESCROW PROTOCOL]\nOur platform operates on a transparent 3% Flat Insurance Commission:\n• Client deposits ₹10,000 into Escrow.\n• 3% Commission (₹300) guarantees fraud coverage, mediator dispute resolution, and encrypted DRM delivery.\n• Freelancer receives ₹9,700 (97%) direct to their bank via Razorpay Instant Payouts or Stripe upon client approval.\n• Zero hidden fees or withdrawal taxes.`;
+        } else if (isSupportRequest) {
+          aiResponseText = `📞 [VERILANCE DISPUTE & ESCROW SUPPORT]\nNeed assistance? Here is our 24/7 priority protocol:\n• Live Arbitration: Click "Raise Dispute (Freeze Funds)" in the agreement sidebar to instantly lock escrow funds.\n• Official Support Desk: arbitration@verilance.io\n• Turnaround: Within 24 hours, a platform mediator reviews original timestamps, watermarked submissions, and chat logs.\n• Funds never leave the vault until fair delivery is confirmed.`;
         } else if (isDisputeRequest) {
           isThreatAlert = true;
           aiResponseText = `🚨 [DISPUTE & ANTI-SCAM RADAR]\nIf a client refuses to release escrow or an editor fails milestone criteria:\n1. Open Dispute from the workspace sidebar.\n2. Funds remain 100% frozen in secure RBI-compliant Trustway escrow vault.\n3. The platform mediator inspects unwatermarked timestamps, chat logs, and View Once audit trails within 24 hours.\n4. Ghosting is impossible because funds are pre-locked.`;
@@ -468,35 +484,42 @@ Keep your answers razor-sharp, cyberpunk-themed, helpful, professional, and conc
             </div>
           </div>
 
-          {/* Quick Filter Prompt Chips */}
+          {/* Quick Action Buttons */}
           <div className="px-3 py-2 bg-[#080b11] border-b border-white/5 overflow-x-auto no-scrollbar flex items-center gap-1.5 shrink-0">
             <button
-              onClick={() => handleSelectQuickPrompt('How does the 3% Escrow Commission work?')}
-              className="px-2.5 py-1 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/30 text-cyan-300 text-[11px] font-medium whitespace-nowrap transition flex items-center gap-1"
+              onClick={() => handleSelectQuickPrompt('Draft a smart agreement for video editing project')}
+              className="px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold whitespace-nowrap transition flex items-center gap-1 cursor-pointer shadow-sm"
             >
-              <ShieldCheck className="w-3 h-3 text-cyan-400" />
-              3% Escrow Calc
+              <Zap className="w-3 h-3 text-cyan-400" />
+              <span>Draft Agreement</span>
             </button>
             <button
-              onClick={() => handleSelectQuickPrompt('Draft a smart agreement for a YouTube Video Edit project.')}
-              className="px-2.5 py-1 rounded-lg bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/30 text-purple-300 text-[11px] font-medium whitespace-nowrap transition flex items-center gap-1"
+              onClick={() => handleSelectQuickPrompt('How does the 3% Escrow Commission work?')}
+              className="px-2.5 py-1 rounded-lg bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/30 text-purple-300 text-[11px] font-medium whitespace-nowrap transition flex items-center gap-1 cursor-pointer"
             >
-              <FileText className="w-3 h-3 text-purple-400" />
-              Draft Contract
+              <ShieldCheck className="w-3 h-3 text-purple-400" />
+              <span>How Escrow Works</span>
+            </button>
+            <button
+              onClick={() => handleSelectQuickPrompt('Calculate escrow breakdown for ₹15,000')}
+              className="px-2.5 py-1 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/30 text-emerald-300 text-[11px] font-medium whitespace-nowrap transition flex items-center gap-1 cursor-pointer"
+            >
+              <FileText className="w-3 h-3 text-emerald-400" />
+              <span>Escrow Calculator</span>
+            </button>
+            <button
+              onClick={() => handleSelectQuickPrompt('How do I contact human support or raise dispute?')}
+              className="px-2.5 py-1 rounded-lg bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/30 text-amber-300 text-[11px] font-medium whitespace-nowrap transition flex items-center gap-1 cursor-pointer"
+            >
+              <Scale className="w-3 h-3 text-amber-400" />
+              <span>Contact Support</span>
             </button>
             <button
               onClick={() => handleSelectQuickPrompt('How does View Once 1-Time media cut protection work?')}
-              className="px-2.5 py-1 rounded-lg bg-blue-950/40 hover:bg-blue-900/60 border border-blue-500/30 text-blue-300 text-[11px] font-medium whitespace-nowrap transition flex items-center gap-1"
+              className="px-2.5 py-1 rounded-lg bg-blue-950/40 hover:bg-blue-900/60 border border-blue-500/30 text-blue-300 text-[11px] font-medium whitespace-nowrap transition flex items-center gap-1 cursor-pointer"
             >
               <Lock className="w-3 h-3 text-blue-400" />
-              View Once DRM
-            </button>
-            <button
-              onClick={() => handleSelectQuickPrompt('How does VAKRA protect me against disputes and fraud?')}
-              className="px-2.5 py-1 rounded-lg bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/30 text-amber-300 text-[11px] font-medium whitespace-nowrap transition flex items-center gap-1"
-            >
-              <Scale className="w-3 h-3 text-amber-400" />
-              Disputes
+              <span>View Once DRM</span>
             </button>
           </div>
 

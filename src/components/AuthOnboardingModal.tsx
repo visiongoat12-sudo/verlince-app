@@ -3,6 +3,7 @@ import { UserProfile, UserRole } from '../types';
 import { VerilanceLogo } from './VerilanceLogo';
 import { saveUserToDB, checkUsernameInDB, checkEmailInDB, fetchUserByEmailOrUsername } from '../lib/firebase';
 import { DEFAULT_AVATARS, getRandomDefaultAvatar, getAvatarUrl } from '../lib/defaultAvatars';
+import { recordRegisteredAccountLocally, isEmailRegisteredLocally, findLocalUserByEmailOrUsername } from '../lib/dataReset';
 import { GalleryPermissionModal } from './GalleryPermissionModal';
 import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 import { soundEffects } from '../lib/soundEffects';
@@ -195,11 +196,12 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
       setEmail(googleUserEmail);
       setFullName(googleUserName);
 
-      // Check if user account already exists in database
-      const existingUser = await fetchUserByEmailOrUsername(googleUserEmail);
+      // Check if user account already exists in database or local registry
+      const localUser = findLocalUserByEmailOrUsername(googleUserEmail);
+      const existingUser = localUser || (await fetchUserByEmailOrUsername(googleUserEmail));
 
       if (authMode === 'register') {
-        if (existingUser) {
+        if (existingUser || isEmailRegisteredLocally(googleUserEmail)) {
           setIsProcessingGoogle(false);
           setAuthError('This email address is already registered. Please sign in or use a different email.');
           return;
@@ -251,6 +253,10 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
       }
 
       // Strict Unique Email Enforcement (1 Email = 1 Account)
+      if (isEmailRegisteredLocally(cleanInput)) {
+        setAuthError('This email address is already registered. Please sign in or use a different email.');
+        return;
+      }
       setIsProcessingEmail(true);
       try {
         const isEmailRegistered = await checkEmailInDB(cleanInput);
@@ -274,7 +280,14 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
 
     try {
       if (authMode === 'sign_in') {
-        // Look up by email or username in Firestore database
+        // Look up by email or username in local registry first, then Firestore
+        const localUser = findLocalUserByEmailOrUsername(cleanInput);
+        if (localUser) {
+          setIsProcessingEmail(false);
+          completeAuthentication(localUser);
+          return;
+        }
+
         const existing = await fetchUserByEmailOrUsername(cleanInput);
         setIsProcessingEmail(false);
         if (existing) {
@@ -396,6 +409,11 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
 
     // Final safety verification: 1 Email = 1 Account
     if (authMode === 'register') {
+      if (isEmailRegisteredLocally(cleanEmail)) {
+        setAuthError('This email address is already registered. Please sign in or use a different email.');
+        setCurrentStep('auth');
+        return;
+      }
       const isRegistered = await checkEmailInDB(cleanEmail);
       if (isRegistered) {
         setAuthError('This email address is already registered. Please sign in or use a different email.');
@@ -431,6 +449,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
     try {
       localStorage.setItem('verilance_auth_user', JSON.stringify(userObj));
       localStorage.setItem('verilance_auth_completed', 'true');
+      recordRegisteredAccountLocally(userObj);
     } catch (e) {
       console.warn('Storage failed', e);
     }

@@ -112,6 +112,61 @@ export function initializeCleanSlateAuth(): {
 }
 
 /**
+ * Record a newly registered user account into local ledger
+ */
+export function recordRegisteredAccountLocally(user: UserProfile): void {
+  try {
+    const raw = localStorage.getItem('verilance_registered_users');
+    const list: UserProfile[] = raw ? JSON.parse(raw) : [];
+    const index = list.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
+    if (index >= 0) {
+      list[index] = user;
+    } else {
+      list.push(user);
+    }
+    localStorage.setItem('verilance_registered_users', JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to record registered account:', e);
+  }
+}
+
+/**
+ * Check if an email is already registered locally
+ */
+export function isEmailRegisteredLocally(email: string, excludeUserId?: string): boolean {
+  try {
+    const clean = email.trim().toLowerCase();
+    if (!clean) return false;
+    const raw = localStorage.getItem('verilance_registered_users');
+    if (!raw) return false;
+    const list: UserProfile[] = JSON.parse(raw);
+    return list.some(u => u.email.toLowerCase() === clean && u.id !== excludeUserId);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find local registered user by email or username
+ */
+export function findLocalUserByEmailOrUsername(query: string): UserProfile | null {
+  try {
+    const clean = query.trim().toLowerCase();
+    if (!clean) return null;
+    const raw = localStorage.getItem('verilance_registered_users');
+    if (!raw) return null;
+    const list: UserProfile[] = JSON.parse(raw);
+    const found = list.find(u => 
+      u.email.toLowerCase() === clean || 
+      (u.username && u.username.toLowerCase() === clean)
+    );
+    return found || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Executes a full database wipe across Firestore and clears all browser state
  */
 export async function executeFullDatabaseWipe(): Promise<{ success: boolean; deletedCount: number }> {

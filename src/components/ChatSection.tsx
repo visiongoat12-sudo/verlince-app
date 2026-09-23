@@ -61,6 +61,8 @@ interface ChatSectionProps {
   onOpenDealModal: () => void;
   onSubmitWork: () => void;
   onApproveAndRelease: () => void;
+  onFundEscrow?: () => void;
+  onRaiseDispute?: (reason: string) => void;
   activeDeal: DealAgreement | null;
   workDelivery: WorkDelivery | null;
   onToggleUserRole: () => void;
@@ -79,6 +81,8 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
   onOpenDealModal,
   onSubmitWork,
   onApproveAndRelease,
+  onFundEscrow,
+  onRaiseDispute,
   activeDeal,
   workDelivery,
   onToggleUserRole,
@@ -240,6 +244,228 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
 
   const handleAddEmoji = (emoji: string) => {
     setInputText((prev) => prev + emoji);
+  };
+
+  // Context-Aware Quick Replies based on current active deal status & user role
+  interface QuickReplyItem {
+    id: string;
+    label: string;
+    icon: string;
+    highlight?: boolean;
+    description?: string;
+    action: () => void;
+  }
+
+  const getContextQuickReplies = (): QuickReplyItem[] => {
+    if (!activeDeal) {
+      return [
+        {
+          id: 'create-deal',
+          label: 'Create Escrow Deal',
+          icon: '🤝',
+          description: 'Lock funds in 3% Escrow',
+          action: () => onOpenDealModal(),
+        },
+        {
+          id: 'request-quote',
+          label: 'Request Quotation',
+          icon: '📋',
+          description: 'Ask for scope & pricing',
+          action: () => onSendMessage('Hi! Can you share the timeline and scope details for this project? Let’s lock it with a VERILANCE Escrow deal.'),
+        },
+        {
+          id: 'vakra-check',
+          label: 'Scan Contract Terms',
+          icon: '🛡️',
+          description: 'Run VAKRA anti-fraud scan',
+          action: () => onSendMessage('Checking the terms against VERILANCE 3% anti-fraud escrow guidelines. Can you confirm the final milestone?'),
+        },
+        {
+          id: 'view-portfolio',
+          label: 'Review Work Samples',
+          icon: '🎬',
+          description: 'Request watermarked preview',
+          action: () => onSendMessage('Can you send a 1-time View Once proof or sample of your previous cuts?'),
+        },
+      ];
+    }
+
+    const isClient = currentUser.role === 'creator';
+    const status = activeDeal.status;
+
+    // Status: Pending funding / agreement drafted
+    if (status === 'pending_funding' || status === 'pending') {
+      return [
+        {
+          id: 'fund-escrow',
+          label: 'Fund Escrow (Razorpay)',
+          icon: '🔒',
+          highlight: true,
+          action: () => {
+            if (onFundEscrow) onFundEscrow();
+            else onOpenDealModal();
+          },
+        },
+        {
+          id: 'check-status',
+          label: 'Check Escrow Status',
+          icon: '⚡',
+          action: () => onSendMessage(`⚡ [Escrow Status]: Contract for "${activeDeal.title || activeDeal.serviceType}" (₹${activeDeal.amount.toLocaleString('en-IN')}) is awaiting Escrow deposit. 3% platform commission reserved.`),
+        },
+        {
+          id: 'request-revision',
+          label: 'Modify Terms',
+          icon: '✏️',
+          action: () => onOpenDealModal(),
+        },
+        {
+          id: 'vakra-escrow-help',
+          label: 'Escrow Guarantee Info',
+          icon: '🛡️',
+          action: () => onSendMessage('Can we confirm the deadline and revision terms before locking funds into the RBI-compliant escrow vault?'),
+        },
+      ];
+    }
+
+    // Status: Escrow Secured & Active Work in progress
+    if (status === 'escrow_secured' && !workDelivery) {
+      return [
+        {
+          id: 'check-escrow-status',
+          label: 'Check Escrow Status',
+          icon: '🔒',
+          action: () => onSendMessage(`🔒 [Escrow Secured]: ₹${activeDeal.amount.toLocaleString('en-IN')} is locked in VERILANCE Escrow. Freelancer net payout ₹${activeDeal.netPayout.toLocaleString('en-IN')} (3% commission: ₹${activeDeal.commissionFee}). Deadline: ${activeDeal.deadline}.`),
+        },
+        {
+          id: 'submit-work-now',
+          label: isClient ? 'Request Status Update' : 'Submit Draft Proof',
+          icon: isClient ? '⏱️' : '🎬',
+          highlight: !isClient,
+          action: () => {
+            if (isClient) {
+              onSendMessage('Hi! How is the edit pacing coming along? Looking forward to reviewing the watermarked draft!');
+            } else {
+              onSubmitWork();
+            }
+          },
+        },
+        {
+          id: 'send-view-once',
+          label: 'Send View-Once Proof',
+          icon: '①',
+          action: () => setShowSendViewOnceModal(true),
+        },
+        {
+          id: 'timeline-reminder',
+          label: 'Deadline Check',
+          icon: '📅',
+          action: () => onSendMessage(`Reminder: Target delivery deadline is ${activeDeal.deadline}. Everything on track?`),
+        },
+      ];
+    }
+
+    // Status: Work Submitted (Watermarked delivery under review)
+    if (status === 'work_submitted' || (activeDeal && workDelivery && !workDelivery.isApproved)) {
+      return [
+        {
+          id: 'approve-release',
+          label: 'Looks Good! Approve & Release',
+          icon: '🎉',
+          highlight: true,
+          action: () => {
+            soundEffects.playNotificationSound();
+            onApproveAndRelease();
+          },
+        },
+        {
+          id: 'request-revision',
+          label: 'Request Revision',
+          icon: '🔄',
+          action: () => {
+            soundEffects.playTabClick();
+            onSendMessage('🔄 [Revision Requested]: Reviewed the draft proof. Could you tweak the audio normalization and speed up the intro cut by 2 seconds?');
+          },
+        },
+        {
+          id: 'check-escrow-status',
+          label: 'Check Escrow Status',
+          icon: '🔒',
+          action: () => onSendMessage(`🔒 [Escrow Status]: ₹${activeDeal.netPayout.toLocaleString('en-IN')} held securely. Funds only release when Client approves the watermark preview.`),
+        },
+        {
+          id: 'raise-dispute',
+          label: 'Dispute / Arbitration',
+          icon: '🚨',
+          action: () => {
+            if (onRaiseDispute) {
+              onRaiseDispute('Work quality or deadline variance inquiry.');
+            } else {
+              onSendMessage('🚨 [Notice]: Requesting review from VERILANCE dispute resolution team regarding current milestone.');
+            }
+          },
+        },
+      ];
+    }
+
+    // Status: Released / Settled
+    if (status === 'released') {
+      return [
+        {
+          id: 'post-new-deal',
+          label: 'Start Next Milestone',
+          icon: '🤝',
+          highlight: true,
+          action: () => onOpenDealModal(),
+        },
+        {
+          id: 'rate-review',
+          label: '5★ Feedback Sent',
+          icon: '⭐',
+          action: () => onSendMessage('⭐️⭐️⭐️⭐️⭐️ Outstanding collaboration! 100% on time, clean cut, and instant escrow settlement. Looking forward to the next project!'),
+        },
+        {
+          id: 'download-receipt',
+          label: 'Escrow Receipt Confirmed',
+          icon: '📄',
+          action: () => onSendMessage(`📄 [VERILANCE Receipt]: Escrow ID ${activeDeal.id} successfully settled. ₹${activeDeal.netPayout.toLocaleString('en-IN')} disbursed. 3% platform commission: ₹${activeDeal.commissionFee}.`),
+        },
+        {
+          id: 'check-wallet',
+          label: 'Wallet Updated',
+          icon: '💼',
+          action: () => onSendMessage(`💼 Funds successfully reflected in wallet balance (₹${currentUser.walletBalance.toLocaleString('en-IN')}).`),
+        },
+      ];
+    }
+
+    // Status: Disputed
+    return [
+      {
+        id: 'arbitration-status',
+        label: 'Arbitration Status',
+        icon: '⚖️',
+        highlight: true,
+        action: () => onSendMessage('⚖️ [VERILANCE Multi-Sig Tribunal]: Escrow is frozen in neutral multi-sig vault. Both parties may upload timestamped chat and raw source logs.'),
+      },
+      {
+        id: 'submit-evidence',
+        label: 'Submit Evidence',
+        icon: '📁',
+        action: () => onSendMessage('📁 Source timeline project files and original draft logs submitted for tribunal arbitration.'),
+      },
+      {
+        id: 'settle-amicably',
+        label: 'Approve & Settle Now',
+        icon: '🤝',
+        action: () => onApproveAndRelease(),
+      },
+      {
+        id: 'contact-sentinel',
+        label: 'Ask VAKRA AI',
+        icon: '🛡️',
+        action: () => onSendMessage('VAKRA: How does escrow arbitration work for partial delivery?'),
+      },
+    ];
   };
 
   const filteredChannels = channels.filter((c) => {
@@ -1033,6 +1259,41 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
               </div>
             </div>
           )}
+
+          {/* CONTEXT-AWARE QUICK-REPLY ACTION BUTTONS (Apple x Linear Dark-Mode Cyberpunk) */}
+          <div className="mb-2.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar no-scrollbar text-xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0 px-1 hidden sm:inline">
+                Quick Actions:
+              </span>
+              {getContextQuickReplies().map((qr) => {
+                const isHighlight = qr.highlight;
+                return (
+                  <button
+                    key={qr.id}
+                    type="button"
+                    onClick={() => {
+                      soundEffects.playSubTabClick();
+                      qr.action();
+                    }}
+                    className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-xl border text-[11px] font-semibold transition-all duration-200 flex items-center gap-1.5 shadow-sm active:scale-95 group ${
+                      isHighlight
+                        ? 'bg-gradient-to-r from-cyan-500/20 via-teal-500/20 to-cyan-500/30 border-cyan-400/60 text-cyan-200 hover:border-cyan-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.35)]'
+                        : 'bg-[#10141e]/90 hover:bg-[#161c2a] border-white/10 hover:border-white/20 text-slate-300 hover:text-white'
+                    }`}
+                    title={qr.label}
+                  >
+                    <span className="text-xs group-hover:scale-110 transition-transform select-none">
+                      {qr.icon}
+                    </span>
+                    <span className="whitespace-nowrap font-medium tracking-tight">
+                      {qr.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <form onSubmit={handleSend} className="flex items-center gap-2">
             {/* THE 🤝 DEAL ICON BUTTON */}

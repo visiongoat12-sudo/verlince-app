@@ -25,7 +25,12 @@ import {
   Award,
   Layers,
   Search,
-  Filter
+  Filter,
+  Camera,
+  Building,
+  RefreshCw,
+  XCircle,
+  Eye
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 import { subscribeDeals } from '../lib/firebase';
@@ -67,7 +72,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   const [recoveryEmail, setRecoveryEmail] = useState(currentUser?.recoveryEmail || '');
   const [role, setRole] = useState<UserRole>(currentUser?.role || 'editor'); // 'editor' vs 'creator'
   const [isVerifiedPro, setIsVerifiedPro] = useState(currentUser?.hasVerifiedBadge ?? false);
-  const [kycStatus, setKycStatus] = useState<'unverified' | 'pending' | 'verified'>(currentUser?.kycStatus || 'unverified');
+  const [kycStatus, setKycStatus] = useState<'unverified' | 'pending' | 'verified' | 'rejected'>(currentUser?.kycStatus || 'unverified');
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar || DEFAULT_AVATARS[0].svgDataUri);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,14 +116,22 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
     }
   }, [currentUser]);
 
-  // 2. PERSONAL MEMORANDA (Verification Form) STATE
-  const [legalName, setLegalName] = useState(currentUser?.name || '');
-  const [idType, setIdType] = useState('Govt Photo ID');
+  // 2. PERSONAL MEMORANDA & KYC ONBOARDING STATE
+  const [legalName, setLegalName] = useState(currentUser?.kycData?.legalName || currentUser?.name || '');
+  const [idType, setIdType] = useState(currentUser?.kycData?.idType || 'Aadhaar Card');
+  const [idNumber, setIdNumber] = useState(currentUser?.kycData?.idNumber || '');
+  const [docFrontName, setDocFrontName] = useState<string | null>(currentUser?.kycData?.docFrontPreview ? 'id_document_front.jpg' : null);
+  const [docBackName, setDocBackName] = useState<string | null>(currentUser?.kycData?.docBackPreview ? 'id_document_back.jpg' : null);
+  const [selfieName, setSelfieName] = useState<string | null>(currentUser?.kycData?.selfiePreview ? 'live_selfie.jpg' : null);
+  const [bankAccount, setBankAccount] = useState(currentUser?.kycData?.bankAccount || '');
+  const [bankHolderName, setBankHolderName] = useState(currentUser?.kycData?.bankHolderName || currentUser?.name || '');
+  const [bankIfsc, setBankIfsc] = useState(currentUser?.kycData?.bankIfsc || '');
   const [portfolioLink, setPortfolioLink] = useState('');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(currentUser?.idDocumentName || null);
   const [uploadedFileSize, setUploadedFileSize] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [verificationSubmittedDate, setVerificationSubmittedDate] = useState<string | null>(null);
+  const [verificationSubmittedDate, setVerificationSubmittedDate] = useState<string | null>(currentUser?.kycData?.submittedAt || null);
+  const [kycError, setKycError] = useState<string | null>(null);
 
   // 3. CHECKOUT MODAL STATE
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -164,8 +177,11 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
 
   const [tableFilter, setTableFilter] = useState<'all' | 'Completed' | 'Escrow Released' | 'Disputed'>('all');
 
-  // Mobile Gallery Permission & File Ref
+  // File and Camera Upload Refs for KYC
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docFrontInputRef = useRef<HTMLInputElement>(null);
+  const docBackInputRef = useRef<HTMLInputElement>(null);
+  const selfieInputRef = useRef<HTMLInputElement>(null);
   const [isGalleryPermModalOpen, setIsGalleryPermModalOpen] = useState(false);
 
   const handleTriggerUpload = () => {
@@ -193,6 +209,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
       const file = e.target.files[0];
       setUploadedFileName(file.name);
       setUploadedFileSize(`${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+      if (!docFrontName) setDocFrontName(file.name);
     }
   };
 
@@ -203,24 +220,120 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
       const file = e.dataTransfer.files[0];
       setUploadedFileName(file.name);
       setUploadedFileSize(`${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+      if (!docFrontName) setDocFrontName(file.name);
+    }
+  };
+
+  const handleDocFrontUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setDocFrontName(e.target.files[0].name);
+    }
+  };
+
+  const handleDocBackUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setDocBackName(e.target.files[0].name);
+    }
+  };
+
+  const handleSelfieUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelfieName(e.target.files[0].name);
     }
   };
 
   const handleSubmitVerification = (e: React.FormEvent) => {
     e.preventDefault();
-    soundEffects.playNotificationSound();
-    if (!uploadedFileName) {
-      setUploadedFileName('Aadhaar_Govt_Issued_National_Card.pdf');
-      setUploadedFileSize('1.84 MB');
+    setKycError(null);
+
+    // Validation for ID Number format
+    const trimmedId = idNumber.trim().toUpperCase();
+    if (idType === 'Aadhaar Card') {
+      const cleanAadhaar = trimmedId.replace(/[\s-]/g, '');
+      if (cleanAadhaar.length !== 12 || !/^\d{12}$/.test(cleanAadhaar)) {
+        setKycError('Invalid Aadhaar Number: Must be exactly 12 numeric digits.');
+        return;
+      }
+    } else if (idType === 'PAN Card') {
+      const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+      if (!panRegex.test(trimmedId)) {
+        setKycError('Invalid PAN Format: Must follow standard 10-char format (e.g. ABCDE1234F).');
+        return;
+      }
+    } else if (idType === 'Passport') {
+      if (trimmedId.length < 8) {
+        setKycError('Invalid Passport Number: Must contain at least 8 alphanumeric characters.');
+        return;
+      }
     }
-    setKycStatus('pending');
-    setVerificationSubmittedDate(new Date().toLocaleDateString('en-GB', {
+
+    if (bankIfsc) {
+      const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+      if (!ifscRegex.test(bankIfsc.trim().toUpperCase())) {
+        setKycError('Invalid IFSC Code: Format must be 11 characters (e.g. HDFC0001234).');
+        return;
+      }
+    }
+
+    soundEffects.playNotificationSound();
+    if (!uploadedFileName && !docFrontName) {
+      setUploadedFileName(`${idType.replace(/\s+/g, '_')}_Verified_Doc.pdf`);
+      setUploadedFileSize('2.15 MB');
+    }
+
+    const timestamp = new Date().toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-    }));
+    });
+
+    setKycStatus('pending');
+    setVerificationSubmittedDate(timestamp);
+
+    if (onUpdateProfile) {
+      onUpdateProfile({
+        kycStatus: 'pending',
+        idDocumentName: uploadedFileName || docFrontName || 'Govt_ID_Document.pdf',
+        kycData: {
+          legalName,
+          idType,
+          idNumber: trimmedId,
+          docFrontPreview: docFrontName || 'Front_Proof.jpg',
+          docBackPreview: docBackName || 'Back_Proof.jpg',
+          selfiePreview: selfieName || 'Live_Selfie.jpg',
+          bankAccount,
+          bankHolderName,
+          bankIfsc: bankIfsc.toUpperCase(),
+          submittedAt: timestamp,
+        }
+      });
+    }
+  };
+
+  const handleSimulateKycApproval = () => {
+    soundEffects.playNotificationSound();
+    setKycStatus('verified');
+    if (onUpdateProfile) {
+      onUpdateProfile({
+        kycStatus: 'verified',
+        hasVerifiedBadge: true,
+      });
+    }
+  };
+
+  const handleSimulateKycRejection = () => {
+    soundEffects.playToggleSound();
+    setKycStatus('rejected');
+    if (onUpdateProfile) {
+      onUpdateProfile({
+        kycStatus: 'rejected',
+        kycData: {
+          rejectionReason: 'Document image was blurry or mismatched legal name with govt database hash.',
+        }
+      });
+    }
   };
 
   const handleSimulatePaymentSuccess = () => {
@@ -384,21 +497,27 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 </div>
 
                 {/* KYC Verification State Pill */}
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-medium text-slate-300">
-                  <span className={`w-2 h-2 rounded-full ${
-                    kycStatus === 'verified'
-                      ? 'bg-cyan-400'
-                      : kycStatus === 'pending'
-                      ? 'bg-cyan-400 animate-pulse'
-                      : 'bg-amber-400'
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold border ${
+                  kycStatus === 'verified'
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-500/10'
+                    : kycStatus === 'pending'
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 animate-pulse'
+                    : kycStatus === 'rejected'
+                    ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                    : 'bg-white/[0.04] border-white/10 text-slate-400'
+                }`}>
+                  <ShieldCheck className={`w-3.5 h-3.5 ${
+                    kycStatus === 'verified' ? 'text-emerald-400' : kycStatus === 'pending' ? 'text-amber-400' : kycStatus === 'rejected' ? 'text-rose-400' : 'text-slate-500'
                   }`} />
                   <span>
                     KYC:{' '}
                     {kycStatus === 'verified'
-                      ? 'Approved'
+                      ? 'Verified ✓'
                       : kycStatus === 'pending'
-                      ? 'Pending Manual Review'
-                      : 'Not Submitted'}
+                      ? 'Pending Verification'
+                      : kycStatus === 'rejected'
+                      ? 'Rejected'
+                      : 'Not Verified'}
                   </span>
                 </div>
               </div>
@@ -484,26 +603,60 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
             </div>
 
             {/* Live Status Pill */}
-            <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
-              kycStatus === 'pending'
-                ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 animate-pulse'
-                : kycStatus === 'verified'
-                ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
-                : 'bg-white/[0.04] border-white/10 text-slate-400'
-            }`}>
-              {kycStatus === 'pending'
-                ? '⏳ Verification Pending Manual Review'
-                : kycStatus === 'verified'
-                ? '✅ Identity Verified'
-                : 'Action Required'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
+                kycStatus === 'pending'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse'
+                  : kycStatus === 'verified'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : kycStatus === 'rejected'
+                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  : 'bg-white/[0.04] border-white/10 text-slate-400'
+              }`}>
+                {kycStatus === 'pending'
+                  ? '⏳ Verification Pending Review'
+                  : kycStatus === 'verified'
+                  ? '🛡️ KYC Verified'
+                  : kycStatus === 'rejected'
+                  ? '❌ Verification Rejected'
+                  : '⚠️ Unverified'}
+              </span>
+            </div>
           </div>
+
+          {/* KYC Status Banner & Fast-Track Controls */}
+          {kycStatus === 'verified' && (
+            <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <div>
+                  <p className="font-bold text-sm text-emerald-200">KYC Account Verified</p>
+                  <p className="text-[11px] text-slate-300">Your legal identity and payout bank account are 100% verified. Escrow releases unlocked.</p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30">
+                ACTIVE TIER 1
+              </span>
+            </div>
+          )}
+
+          {kycStatus === 'rejected' && (
+            <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/30 text-xs text-rose-300 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span className="font-bold">Verification Incomplete or Rejected</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                {currentUser?.kycData?.rejectionReason || 'Document details could not be matched. Please ensure all four corners of ID are visible and legal name matches your bank account.'}
+              </p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmitVerification} className="space-y-5">
             {/* Field 1: Full Legal Name */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                Full Legal Name <span className="text-cyan-400">*</span>
+                Full Legal Name (as per Govt ID) <span className="text-cyan-400">*</span>
               </label>
               <input
                 id="input-legal-name"
@@ -511,114 +664,240 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 required
                 value={legalName}
                 onChange={(e) => setLegalName(e.target.value)}
-                placeholder=""
+                placeholder="e.g. Arjun Sharma"
                 className="w-full bg-[#0e0e13] border border-white/[0.09] rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 transition"
               />
             </div>
 
-            {/* Field 2: Government ID Type Dropdown */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                Government ID Type <span className="text-cyan-400">*</span>
-              </label>
-              <select
-                id="select-id-type"
-                value={idType}
-                onChange={(e) => setIdType(e.target.value)}
-                className="w-full bg-[#0e0e13] border border-white/[0.09] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 transition"
-              >
-                <option value="Aadhaar Card">Aadhaar Card (UIDAI Verified)</option>
-                <option value="PAN Card">PAN Card (NSDL Verified)</option>
-                <option value="Passport">Passport (International Travel ID)</option>
-              </select>
+            {/* Field 2: Government ID Type & Number */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                  Government ID Type <span className="text-cyan-400">*</span>
+                </label>
+                <select
+                  id="select-id-type"
+                  value={idType}
+                  onChange={(e) => setIdType(e.target.value)}
+                  className="w-full bg-[#0e0e13] border border-white/[0.09] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 transition"
+                >
+                  <option value="Aadhaar Card">Aadhaar Card (UIDAI Verified)</option>
+                  <option value="PAN Card">PAN Card (NSDL Verified)</option>
+                  <option value="Passport">Passport (International Travel ID)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                  Government ID Number <span className="text-cyan-400">*</span>
+                </label>
+                <input
+                  id="input-id-number"
+                  type="text"
+                  required
+                  value={idNumber}
+                  onChange={(e) => setIdNumber(e.target.value)}
+                  placeholder={
+                    idType === 'Aadhaar Card'
+                      ? '12-digit number (e.g. 5482 1234 9876)'
+                      : idType === 'PAN Card'
+                      ? '10-char PAN (e.g. ABCDE1234F)'
+                      : 'Passport Number'
+                  }
+                  className="w-full bg-[#0e0e13] border border-white/[0.09] rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 transition font-mono"
+                />
+              </div>
             </div>
 
-            {/* Field 3: Stylized Drag & Drop or Click to Upload ID file zone box */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                Upload Government ID Document <span className="text-cyan-400">*</span>
+            {/* Field 3: Front & Back Document Photo Attachments */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Document Photo Attachments (Front & Back) <span className="text-cyan-400">*</span>
               </label>
-              <div
-                onClick={handleTriggerUpload}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer ${
-                  isDragging
-                    ? 'border-cyan-400 bg-cyan-500/10'
-                    : uploadedFileName
-                    ? 'border-cyan-500/40 bg-cyan-500/5'
-                    : 'border-white/15 bg-[#0e0e13] hover:border-white/30 hover:bg-[#121217]'
-                }`}
-              >
-                <input
-                  id="id-file-upload-input"
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
 
-                <div className="flex flex-col items-center justify-center gap-2">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                    uploadedFileName
-                      ? 'bg-cyan-500/20 text-cyan-400'
-                      : 'bg-white/[0.06] text-slate-400'
-                  }`}>
-                    {uploadedFileName ? <FileCheck className="w-6 h-6" /> : <Upload className="w-6 h-6" />}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Front Photo */}
+                <div 
+                  onClick={() => docFrontInputRef.current?.click()}
+                  className={`p-4 rounded-xl border border-dashed cursor-pointer transition text-center flex flex-col items-center justify-center gap-1.5 ${
+                    docFrontName
+                      ? 'border-cyan-500/50 bg-cyan-950/20 text-cyan-200'
+                      : 'border-white/15 bg-[#0e0e13] hover:border-white/30 hover:bg-[#141620]'
+                  }`}
+                >
+                  <input
+                    ref={docFrontInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={handleDocFrontUpload}
+                    className="hidden"
+                  />
+                  <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                    <FileCheck className="w-4 h-4" />
                   </div>
+                  <span className="text-xs font-bold text-white">
+                    {docFrontName ? docFrontName : 'Upload Document Front'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {docFrontName ? 'Front captured ✓' : 'JPG, PNG, or PDF'}
+                  </span>
+                </div>
 
-                  <div>
-                    <p className="text-sm font-bold text-white">
-                      {uploadedFileName ? uploadedFileName : 'Drag & Drop or Click to Upload ID'}
-                    </p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {uploadedFileSize ? `File Size: ${uploadedFileSize} • Uploaded & Stored Securely` : 'Supported formats: PDF, PNG, JPG (Max 15MB)'}
-                    </p>
+                {/* Back Photo */}
+                <div 
+                  onClick={() => docBackInputRef.current?.click()}
+                  className={`p-4 rounded-xl border border-dashed cursor-pointer transition text-center flex flex-col items-center justify-center gap-1.5 ${
+                    docBackName
+                      ? 'border-cyan-500/50 bg-cyan-950/20 text-cyan-200'
+                      : 'border-white/15 bg-[#0e0e13] hover:border-white/30 hover:bg-[#141620]'
+                  }`}
+                >
+                  <input
+                    ref={docBackInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={handleDocBackUpload}
+                    className="hidden"
+                  />
+                  <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                    <FileCheck className="w-4 h-4" />
                   </div>
-
-                  {!uploadedFileName && (
-                    <span className="mt-1 text-[11px] font-semibold px-3 py-1 rounded-lg bg-white/[0.08] text-cyan-300">
-                      Browse Files
-                    </span>
-                  )}
+                  <span className="text-xs font-bold text-white">
+                    {docBackName ? docBackName : 'Upload Document Back'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {docBackName ? 'Back captured ✓' : 'Address & barcode side'}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Field 4: Portfolio / Social Media Link */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                Portfolio / Social Media Link <span className="text-cyan-400">*</span>
+            {/* Field 4: Live Selfie / Profile Photo Capture */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Live Selfie / Liveness Proof <span className="text-cyan-400">*</span>
               </label>
-              <div className="relative">
-                <Globe className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <div 
+                onClick={() => selfieInputRef.current?.click()}
+                className={`p-4 rounded-xl border border-dashed cursor-pointer transition text-center flex items-center justify-between px-5 ${
+                  selfieName
+                    ? 'border-teal-500/50 bg-teal-950/20 text-teal-200'
+                    : 'border-white/15 bg-[#0e0e13] hover:border-white/30 hover:bg-[#141620]'
+                }`}
+              >
                 <input
-                  id="input-portfolio-link"
-                  type="url"
-                  required
-                  value={portfolioLink}
-                  onChange={(e) => setPortfolioLink(e.target.value)}
-                  placeholder=""
-                  className="w-full bg-[#0e0e13] border border-white/[0.09] rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 transition font-mono text-xs"
+                  ref={selfieInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  onChange={handleSelfieUpload}
+                  className="hidden"
                 />
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-teal-500/10 flex items-center justify-center text-teal-400">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xs font-bold text-white">
+                      {selfieName ? selfieName : 'Take or Upload Live Selfie'}
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      Must be well-lit face portrait without sunglasses
+                    </p>
+                  </div>
+                </div>
+
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-white/[0.08] text-teal-300">
+                  {selfieName ? 'Change Photo' : 'Capture Selfie'}
+                </span>
               </div>
             </div>
 
+            {/* Field 5: Bank Account Details for Payout Releases */}
+            <div className="p-4 rounded-2xl bg-[#090d14] border border-cyan-500/20 space-y-3">
+              <div className="flex items-center gap-2 text-cyan-300">
+                <Building className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-wider">
+                  Bank Account Payout Details (For Escrow Releases)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="text-slate-400 text-[11px] block mb-1">Account Holder Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={bankHolderName}
+                    onChange={(e) => setBankHolderName(e.target.value)}
+                    placeholder="Legal name on bank passbook"
+                    className="w-full bg-[#111724] border border-white/10 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-400 text-[11px] block mb-1">Account Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={bankAccount}
+                    onChange={(e) => setBankAccount(e.target.value)}
+                    placeholder="e.g. 50100293847120"
+                    className="w-full bg-[#111724] border border-white/10 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-slate-400 text-[11px] block mb-1">IFSC Code *</label>
+                  <input
+                    type="text"
+                    required
+                    value={bankIfsc}
+                    onChange={(e) => setBankIfsc(e.target.value)}
+                    placeholder="e.g. HDFC0001234 or SBIN0000300"
+                    className="w-full bg-[#111724] border border-white/10 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono uppercase"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {kycError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{kycError}</span>
+              </div>
+            )}
+
             {/* Submit Verification Data Button (Glow Accent) */}
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
               <button
                 type="submit"
                 id="btn-submit-verification-data"
                 className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-black text-sm tracking-wide shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>Submit Verification Data</span>
+                <span>Submit KYC Documents & Payout Details</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
+
+              {/* Fast-Track Simulation Tools for Evaluation */}
+              <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
+                <span>Compliance Sandbox Actions:</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSimulateKycApproval}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold transition"
+                  >
+                    Simulate Approve (Verified)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSimulateKycRejection}
+                    className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-bold transition"
+                  >
+                    Simulate Reject
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Status Feedback Notice */}
@@ -629,7 +908,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                   <span>Verification Pending Manual Review</span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Submitted on {verificationSubmittedDate}. Trustway compliance team is reviewing the UID/Govt database hash matching your legal name.
+                  Submitted on {verificationSubmittedDate}. Trustway compliance team is reviewing the UID/Govt database hash matching your legal name and bank record.
                 </p>
               </div>
             )}

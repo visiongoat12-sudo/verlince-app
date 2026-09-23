@@ -16,7 +16,7 @@ import { soundEffects } from '../lib/soundEffects';
 interface DealModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirmDeal: (deal: DealAgreement) => void;
+  onConfirmDeal: (deal: DealAgreement, triggerPaymentImmediately?: boolean) => void;
   initialValues?: {
     serviceType?: string;
     amount?: number;
@@ -73,13 +73,11 @@ export const DealModal: React.FC<DealModalProps> = ({
   const commissionFee = Math.round(parsedAmount * 0.03 * 100) / 100;
   const netPayout = Math.max(0, parsedAmount - commissionFee);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const createDealObject = (): DealAgreement => {
     const senderDisplayName = senderRole === 'client' ? clientName : freelancerName;
     const receiverDisplayName = senderRole === 'client' ? freelancerName : clientName;
 
-    const newDeal: DealAgreement = {
+    return {
       id: `TRW-${Math.floor(100000 + Math.random() * 900000)}`,
       title: serviceType,
       senderRole: senderRole,
@@ -92,27 +90,33 @@ export const DealModal: React.FC<DealModalProps> = ({
       deadline: deadline,
       description: description,
       paymentMethod: 'UPI',
-      status: 'escrow_secured',
+      status: 'pending_funding',
       createdAt: new Date().toISOString(),
       history: [
         {
           id: `h-${Date.now()}-1`,
-          title: 'Escrow Agreement Initialized',
-          detail: `Deal contract signed between ${senderDisplayName} and ${receiverDisplayName}.`,
+          title: 'Escrow Agreement Drafted (Pending Funding)',
+          detail: `Contract drafted between ${senderDisplayName} and ${receiverDisplayName}. Awaiting ₹${parsedAmount.toLocaleString('en-IN')} escrow funding.`,
           timestamp: 'Just now',
           type: 'neutral',
         },
-        {
-          id: `h-${Date.now()}-2`,
-          title: 'Funds Secured in Escrow 🔒',
-          detail: `₹${parsedAmount.toLocaleString('en-IN')} locked in VERILANCE Multi-Sig Vault. 3% platform commission allocated.`,
-          timestamp: 'Just now',
-          type: 'secure',
-        },
       ],
     };
+  };
 
-    onConfirmDeal(newDeal);
+  const handleCreateAndFund = (e: React.FormEvent) => {
+    e.preventDefault();
+    soundEffects.playTabClick();
+    const deal = createDealObject();
+    onConfirmDeal(deal, true);
+    onClose();
+  };
+
+  const handleSaveAsDraft = (e: React.MouseEvent) => {
+    e.preventDefault();
+    soundEffects.playSubTabClick();
+    const deal = createDealObject();
+    onConfirmDeal(deal, false);
     onClose();
   };
 
@@ -154,7 +158,7 @@ export const DealModal: React.FC<DealModalProps> = ({
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleCreateAndFund} className="space-y-4">
           {/* Field 1: My Role (Radio selection: Sender vs Receiver) */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
@@ -315,15 +319,24 @@ export const DealModal: React.FC<DealModalProps> = ({
             </span>
           </div>
 
-          {/* Field 7: Prominent CONTINUE Button */}
-          <div className="pt-2">
+          {/* Field 7: Action Buttons (Fund via Razorpay or Save Pending) */}
+          <div className="pt-2 space-y-2">
             <button
               type="submit"
               id="btn-confirm-deal-continue"
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold text-sm tracking-wide shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 transition"
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-black text-sm tracking-wide shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition cursor-pointer"
             >
-              <span>CONTINUE</span>
+              <span>Fund Escrow via Razorpay (₹{parsedAmount.toLocaleString('en-IN')})</span>
               <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              id="btn-save-deal-pending"
+              onClick={handleSaveAsDraft}
+              className="w-full py-2.5 rounded-xl bg-[#141824] hover:bg-[#182030] border border-white/10 text-slate-300 font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Save Agreement as Pending (Fund Later)</span>
             </button>
           </div>
         </form>

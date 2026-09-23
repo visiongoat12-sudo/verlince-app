@@ -24,6 +24,7 @@ interface AgreementSidebarProps {
   deal: DealAgreement | null;
   currentUser: UserProfile;
   onOpenCreateDeal: () => void;
+  onFundEscrow?: () => void;
   onSubmitWork: () => void;
   onApproveAndRelease: () => void;
   onRaiseDispute: (reason: string) => void;
@@ -35,6 +36,7 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
   deal,
   currentUser,
   onOpenCreateDeal,
+  onFundEscrow,
   onSubmitWork,
   onApproveAndRelease,
   onRaiseDispute,
@@ -122,8 +124,13 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
                 <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 flex items-center gap-1 animate-pulse">
                   🚨 Under Investigation by VERILANCE Support
                 </span>
+              ) : (deal.status === 'pending_funding' || deal.status === 'pending') ? (
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center gap-1 animate-pulse">
+                  <Clock className="w-3.5 h-3.5" />
+                  Pending Escrow Funding
+                </span>
               ) : deal.status === 'released' ? (
-                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 flex items-center gap-1">
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Funds Released & Completed
                 </span>
@@ -135,7 +142,7 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
               ) : (
                 <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300 flex items-center gap-1">
                   <Lock className="w-3.5 h-3.5" />
-                  Funds Secured in Escrow
+                  Funds Secured in Escrow 🔒
                 </span>
               )}
             </div>
@@ -242,8 +249,20 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
 
             {/* Action Buttons: Submit Work (Freelancer) or Approve & Release (Client) */}
             <div className="pt-2 space-y-2">
-              {/* If user is Editor / Freelancer and work not yet submitted */}
-              {deal.status !== 'released' && deal.status !== 'disputed' && (
+              {/* If deal is pending funding: Client funds escrow via Razorpay */}
+              {(deal.status === 'pending_funding' || deal.status === 'pending') && onFundEscrow && (
+                <button
+                  id="btn-sidebar-fund-escrow"
+                  onClick={onFundEscrow}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-black text-xs tracking-wide shadow-lg shadow-cyan-500/25 transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Lock className="w-4 h-4 text-slate-950" />
+                  <span>⚡ Fund Escrow via Razorpay (₹{deal.amount.toLocaleString('en-IN')})</span>
+                </button>
+              )}
+
+              {/* If user is Editor / Freelancer and work not yet submitted (only active once escrow is funded) */}
+              {deal.status !== 'released' && deal.status !== 'disputed' && deal.status !== 'pending_funding' && deal.status !== 'pending' && (
                 <button
                   id="btn-submit-work-action"
                   onClick={onSubmitWork}
@@ -260,14 +279,22 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
 
               {/* If work is submitted and not released yet */}
               {isWorkSubmitted && deal.status !== 'released' && deal.status !== 'disputed' && (
-                <button
-                  id="btn-sidebar-approve-release"
-                  onClick={onApproveAndRelease}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Approve & Release Funds (₹{deal.netPayout})</span>
-                </button>
+                <div className="space-y-1.5">
+                  <button
+                    id="btn-sidebar-approve-release"
+                    onClick={onApproveAndRelease}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Approve & Release Funds (₹{deal.netPayout.toLocaleString('en-IN')})</span>
+                  </button>
+
+                  {/* KYC Compliance note */}
+                  <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
+                    <ShieldCheck className="w-3 h-3 text-cyan-400" />
+                    <span>Requires recipient KYC Verified bank account</span>
+                  </div>
+                </div>
               )}
 
               {/* Dispute Button */}
