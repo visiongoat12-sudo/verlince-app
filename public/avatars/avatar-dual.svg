@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <rect width="512" height="512" fill="#000000"/>
+  <!-- Left Eye: Semicircle (flat top, curved bottom) -->
+  <path d="M 88 240 L 224 240 A 68 68 0 0 1 88 240 Z" fill="#ffffff" />
+  <!-- Right Eye: Solid Full Circle -->
+  <circle cx="356" cy="236" r="68" fill="#ffffff" />
+</svg>

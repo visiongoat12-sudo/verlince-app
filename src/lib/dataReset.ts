@@ -1,5 +1,6 @@
 import { UserProfile } from '../types';
 import { wipeFirestoreDatabase } from './firebase';
+import { DEFAULT_AVATARS, getRandomDefaultAvatar } from './defaultAvatars';
 
 export const CLEAN_SLATE_USER: UserProfile = {
   id: '',
@@ -12,7 +13,7 @@ export const CLEAN_SLATE_USER: UserProfile = {
   hasVerifiedBadge: false,
   badgePurchasedAt: undefined,
   badgeExpiresAt: undefined,
-  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+  avatar: DEFAULT_AVATARS[0].svgDataUri,
   kycStatus: 'unverified',
   walletBalance: 0,
 };
@@ -32,6 +33,8 @@ export function isDemoUser(user: Partial<UserProfile> | null | undefined): boole
   if (user.email && DEMO_EMAILS.has(user.email.toLowerCase())) return true;
   if (user.username && DEMO_USERNAMES.has(user.username.toLowerCase())) return true;
   if (user.name === 'Kabir Verma' || user.name === 'Aarav Sharma') return true;
+  // If avatar is old unsplash demo avatar
+  if (user.avatar && user.avatar.includes('unsplash.com')) return true;
   return false;
 }
 
@@ -44,8 +47,8 @@ export function clearAllStorageData(): void {
     localStorage.clear();
     sessionStorage.clear();
 
-    // Mark that fresh clean slate v5 has been initialized
-    localStorage.setItem('verilance_wipe_v5_clean', 'true');
+    // Mark that fresh clean slate v6 has been initialized
+    localStorage.setItem('verilance_wipe_v6_clean', 'true');
     console.log('[DataReset] Browser local/session storage completely wiped. Clean-slate initialized.');
   } catch (e) {
     console.warn('[DataReset] Storage clearance warning:', e);
@@ -62,13 +65,13 @@ export function initializeCleanSlateAuth(): {
   isAuthModalOpen: boolean;
 } {
   try {
-    // Check if clean-slate wipe v5 has already been completed
-    const hasReset = localStorage.getItem('verilance_wipe_v5_clean') === 'true';
+    // Check if clean-slate wipe v6 has already been completed
+    const hasReset = localStorage.getItem('verilance_wipe_v6_clean') === 'true';
     if (!hasReset) {
       // First boot with new wipe: purge all storage completely
       clearAllStorageData();
       return {
-        initialUser: { ...CLEAN_SLATE_USER },
+        initialUser: { ...CLEAN_SLATE_USER, avatar: getRandomDefaultAvatar().svgDataUri },
         isAuthenticated: false,
         isAuthModalOpen: true,
       };
@@ -83,7 +86,7 @@ export function initializeCleanSlateAuth(): {
         // Discard invalid / demo accounts
         clearAllStorageData();
         return {
-          initialUser: { ...CLEAN_SLATE_USER },
+          initialUser: { ...CLEAN_SLATE_USER, avatar: getRandomDefaultAvatar().svgDataUri },
           isAuthenticated: false,
           isAuthModalOpen: true,
         };
@@ -102,7 +105,7 @@ export function initializeCleanSlateAuth(): {
 
   // Default clean start: strictly unauthenticated on fresh load
   return {
-    initialUser: { ...CLEAN_SLATE_USER },
+    initialUser: { ...CLEAN_SLATE_USER, avatar: getRandomDefaultAvatar().svgDataUri },
     isAuthenticated: false,
     isAuthModalOpen: true,
   };
@@ -114,7 +117,7 @@ export function initializeCleanSlateAuth(): {
 export async function executeFullDatabaseWipe(): Promise<{ success: boolean; deletedCount: number }> {
   clearAllStorageData();
   const res = await wipeFirestoreDatabase();
-  localStorage.setItem('verilance_wipe_v5_clean', 'true');
-  sessionStorage.setItem('verilance_firestore_wiped_v5', 'true');
+  localStorage.setItem('verilance_wipe_v6_clean', 'true');
+  sessionStorage.setItem('verilance_firestore_wiped_v6', 'true');
   return res;
 }

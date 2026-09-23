@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <rect width="512" height="512" fill="#000000"/>
+  <!-- Left Eye: White circle with offset black pupil -->
+  <circle cx="172" cy="232" r="62" fill="#ffffff" />
+  <circle cx="156" cy="242" r="16" fill="#000000" />
+  <!-- Right Eye: White circle with offset black pupil -->
+  <circle cx="340" cy="232" r="62" fill="#ffffff" />
+  <circle cx="348" cy="220" r="16" fill="#000000" />
+</svg>

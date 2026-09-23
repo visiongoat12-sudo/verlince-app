@@ -123,7 +123,7 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
                   🚨 Under Investigation by VERILANCE Support
                 </span>
               ) : deal.status === 'released' ? (
-                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center gap-1">
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Funds Released & Completed
                 </span>
@@ -191,8 +191,8 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
                 <span className="font-semibold">-₹{deal.commissionFee.toLocaleString('en-IN')}</span>
               </div>
               <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
-                <span className="font-bold text-emerald-400">Net Payout to Freelancer:</span>
-                <span className="text-sm font-extrabold text-emerald-400">₹{deal.netPayout.toLocaleString('en-IN')}</span>
+                <span className="font-bold text-cyan-400">Net Payout to Freelancer:</span>
+                <span className="text-sm font-extrabold text-cyan-400">₹{deal.netPayout.toLocaleString('en-IN')}</span>
               </div>
             </div>
 
@@ -263,7 +263,7 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
                 <button
                   id="btn-sidebar-approve-release"
                   onClick={onApproveAndRelease}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Approve & Release Funds (₹{deal.netPayout})</span>
@@ -331,7 +331,7 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
                     event.type === 'disputed' 
                       ? 'bg-red-400' 
                       : event.type === 'released' 
-                      ? 'bg-emerald-400' 
+                      ? 'bg-cyan-400' 
                       : event.type === 'submitted' 
                       ? 'bg-cyan-400' 
                       : 'bg-teal-400'

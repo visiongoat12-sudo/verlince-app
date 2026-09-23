@@ -99,7 +99,7 @@ export const VakraCompanion: React.FC<VakraCompanionProps> = ({
               </div>
             </div>
             {/* Online Cyber Aura indicator */}
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0c1017] animate-pulse" />
+            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-cyan-400 ring-2 ring-[#0c1017] animate-pulse" />
           </div>
 
           <div>

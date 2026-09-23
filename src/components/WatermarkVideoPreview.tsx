@@ -205,7 +205,7 @@ export const WatermarkVideoPreview: React.FC<WatermarkVideoPreviewProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 text-emerald-400 font-semibold bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+          <div className="flex items-center gap-1.5 text-cyan-400 font-semibold bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
             <CheckCircle className="w-3.5 h-3.5" />
             <span>{delivery.deadlineComparison} (Target: {deadlineString})</span>
           </div>
@@ -227,16 +227,16 @@ export const WatermarkVideoPreview: React.FC<WatermarkVideoPreviewProps> = ({
             <button
               id="btn-approve-release-funds"
               onClick={onApproveAndRelease}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-1.5 whitespace-nowrap self-start sm:self-auto"
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-1.5 whitespace-nowrap self-start sm:self-auto"
             >
               <ShieldCheck className="w-4 h-4" />
               <span>Approve & Release Funds</span>
             </button>
           </div>
         ) : (
-          <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="rounded-xl bg-cyan-500/10 border border-cyan-500/30 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
-              <p className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+              <p className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
                 <CheckCircle className="w-4 h-4" />
                 Funds Released & Watermark Permanently Cleared
               </p>
@@ -248,7 +248,7 @@ export const WatermarkVideoPreview: React.FC<WatermarkVideoPreviewProps> = ({
             <button
               id="btn-download-master-work"
               onClick={handleDownload}
-              className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 whitespace-nowrap self-start sm:self-auto"
+              className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2 whitespace-nowrap self-start sm:self-auto"
             >
               <Download className="w-4 h-4" />
               <span>Download Master 4K Video</span>

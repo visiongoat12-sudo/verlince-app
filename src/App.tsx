@@ -11,6 +11,7 @@ import {
 import { OnboardingModal } from './components/OnboardingModal';
 import { AuthOnboardingModal } from './components/AuthOnboardingModal';
 import { VakraCompanion } from './components/VakraCompanion';
+import { VakraFloatingAssistant } from './components/VakraFloatingAssistant';
 import { DealModal } from './components/DealModal';
 import { AgreementSidebar } from './components/AgreementSidebar';
 import { ChatSection } from './components/ChatSection';
@@ -37,7 +38,9 @@ import {
   Search,
   LogOut,
   RotateCcw,
-  Trash2
+  Trash2,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { fetchUserFromDB, saveUserToDB } from './lib/firebase';
 import { 
@@ -46,10 +49,15 @@ import {
   CLEAN_SLATE_USER, 
   executeFullDatabaseWipe 
 } from './lib/dataReset';
+import { getRandomDefaultAvatar, DEFAULT_AVATARS } from './lib/defaultAvatars';
+import { soundEffects } from './lib/soundEffects';
 
 export default function App() {
   // Check and enforce clean-slate auth logic on startup
   const initialAuth = initializeCleanSlateAuth();
+
+  // Sound effects enabled toggle state
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => soundEffects.isEnabled());
 
   // Navigation View State: 'marketplace' (Default Upwork-inspired layout) vs 'profile' vs 'escrow'
   const [currentView, setCurrentView] = useState<'marketplace' | 'profile' | 'escrow'>('marketplace');
@@ -94,14 +102,48 @@ export default function App() {
   // 6. Work Delivery State (Clean Slate: null initially)
   const [workDelivery, setWorkDelivery] = useState<WorkDelivery | null>(null);
 
+  // 7. Real-Time Holographic Notification Toast State
+  const [toastNotification, setToastNotification] = useState<{
+    id: string;
+    title: string;
+    description: string;
+    type: 'info' | 'success' | 'alert' | 'escrow';
+  } | null>(null);
+
+  const showNotification = (notif: {
+    title: string;
+    description: string;
+    type?: 'info' | 'success' | 'alert' | 'escrow';
+  }) => {
+    if (notif.type === 'alert') {
+      soundEffects.playAlertWarningSound();
+    } else {
+      soundEffects.playNotificationSound();
+    }
+    setToastNotification({
+      id: String(Date.now()),
+      title: notif.title,
+      description: notif.description,
+      type: notif.type || 'info',
+    });
+  };
+
+  useEffect(() => {
+    if (!toastNotification) return;
+    const timer = setTimeout(() => {
+      setToastNotification(null);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [toastNotification]);
+
   // Sync real profile from Firestore on load & trigger full blank-slate wipe if uninitiated
   useEffect(() => {
-    const isWipedV5 = localStorage.getItem('verilance_wipe_v5_clean') === 'true';
-    if (!isWipedV5) {
+    const isWipedV6 = localStorage.getItem('verilance_wipe_v6_clean') === 'true';
+    if (!isWipedV6) {
       console.log('[App] Initializing fresh database blank slate (0 users, 0 deals, 0 profiles)...');
       executeFullDatabaseWipe().then(() => {
-        localStorage.setItem('verilance_wipe_v5_clean', 'true');
-        setCurrentUser(CLEAN_SLATE_USER);
+        localStorage.setItem('verilance_wipe_v6_clean', 'true');
+        setCurrentUser({ ...CLEAN_SLATE_USER, avatar: getRandomDefaultAvatar().svgDataUri });
         setIsAuthenticated(false);
         setIsAuthModalOpen(true);
         setActiveDeal(null);
@@ -263,6 +305,11 @@ export default function App() {
 
   // VAKRA Alert Trigger in Chat
   const handleVakraScanAlert = (alertText: string) => {
+    showNotification({
+      title: '🚨 VAKRA Anti-Scam Threat Alert',
+      description: alertText,
+      type: 'alert',
+    });
     const alertMsg: ChatMessage = {
       id: `vakra-${Date.now()}`,
       senderId: 'vakra-ai',
@@ -279,6 +326,11 @@ export default function App() {
   const handleConfirmDeal = (deal: DealAgreement) => {
     setActiveDeal(deal);
     setWorkDelivery(null); // Reset delivery state for new deal
+    showNotification({
+      title: '🤝 Escrow Locked & Funded',
+      description: `₹${deal.amount.toLocaleString('en-IN')} secured for ${deal.serviceType}. 3% commission protected.`,
+      type: 'escrow',
+    });
     
     // Add system notification message to chat
     const dealSystemMsg: ChatMessage = {
@@ -313,6 +365,11 @@ export default function App() {
     };
 
     setWorkDelivery(delivery);
+    showNotification({
+      title: '🎬 Watermarked Draft Submitted',
+      description: 'Editor submitted 4K preview with diagonal security watermark.',
+      type: 'success',
+    });
 
     if (activeDeal) {
       setActiveDeal((prev) => {
@@ -379,6 +436,12 @@ export default function App() {
       walletBalance: prev.walletBalance + (activeDeal?.netPayout || 1940),
     }));
 
+    showNotification({
+      title: '🎉 Escrow Settled & Funds Released',
+      description: `₹${activeDeal.netPayout.toLocaleString('en-IN')} paid to Editor! Clean 4K Master export unlocked.`,
+      type: 'success',
+    });
+
     // Add chat notification
     const releaseMsg: ChatMessage = {
       id: `release-${Date.now()}`,
@@ -397,6 +460,12 @@ export default function App() {
     if (!activeDeal) return;
 
     const caseId = `#DISP-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    showNotification({
+      title: `🚨 Dispute Opened (${caseId})`,
+      description: 'Funds frozen in multi-sig vault. Trustway arbitrator reviewing evidence.',
+      type: 'alert',
+    });
 
     setActiveDeal((prev) => {
       if (!prev) return null;
@@ -488,6 +557,51 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#07090d] text-slate-100 overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* 0. HOLOGRAPHIC NOTIFICATION TOAST POPUP */}
+      {toastNotification && (
+        <div 
+          id="verilance-toast-notification"
+          className="fixed top-4 right-4 z-50 max-w-sm sm:max-w-md p-3.5 sm:p-4 rounded-2xl bg-[#0c111c]/95 backdrop-blur-2xl border border-cyan-500/40 shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_25px_rgba(6,182,212,0.25)] flex items-start justify-between gap-3 text-white animate-in slide-in-from-top-4 fade-in duration-300"
+        >
+          <div className="flex items-start gap-3">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
+              toastNotification.type === 'alert'
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                : toastNotification.type === 'success'
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                : toastNotification.type === 'escrow'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+            }`}>
+              {toastNotification.type === 'alert' ? (
+                <AlertCircle className="w-5 h-5" />
+              ) : toastNotification.type === 'success' ? (
+                <ShieldCheck className="w-5 h-5" />
+              ) : toastNotification.type === 'escrow' ? (
+                <Lock className="w-5 h-5" />
+              ) : (
+                <Bell className="w-5 h-5" />
+              )}
+            </div>
+            <div className="space-y-0.5">
+              <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5 font-['Space_Grotesk']">
+                {toastNotification.title}
+              </h4>
+              <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed">
+                {toastNotification.description}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setToastNotification(null)}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition shrink-0"
+            title="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 1. TOP APP HEADER BAR */}
       <header 
         id="app-header-bar"
@@ -495,7 +609,10 @@ export default function App() {
       >
         {/* Logo & Platform Identity */}
         <div 
-          onClick={() => setCurrentView('marketplace')}
+          onClick={() => {
+            soundEffects.playNavTabClick();
+            setCurrentView('marketplace');
+          }}
           className="flex items-center gap-3 cursor-pointer select-none group shrink-0"
         >
           <VerilanceLogo size="md" />
@@ -505,7 +622,10 @@ export default function App() {
         <div className="hidden md:flex items-center gap-1.5 p-1 bg-[#131722] rounded-xl border border-white/10 shadow-inner">
           <button
             id="nav-tab-marketplace"
-            onClick={() => setCurrentView('marketplace')}
+            onClick={() => {
+              soundEffects.playNavTabClick();
+              setCurrentView('marketplace');
+            }}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
               currentView === 'marketplace'
                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-md shadow-cyan-500/10'
@@ -518,7 +638,10 @@ export default function App() {
 
           <button
             id="nav-tab-profile-verification"
-            onClick={() => setCurrentView('profile')}
+            onClick={() => {
+              soundEffects.playNavTabClick();
+              setCurrentView('profile');
+            }}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
               currentView === 'profile'
                 ? 'bg-gradient-to-r from-blue-600/30 to-purple-600/30 text-white border border-purple-500/50 shadow-md shadow-purple-500/10'
@@ -534,7 +657,10 @@ export default function App() {
 
           <button
             id="nav-tab-escrow-workspace"
-            onClick={() => setCurrentView('escrow')}
+            onClick={() => {
+              soundEffects.playNavTabClick();
+              setCurrentView('escrow');
+            }}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
               currentView === 'escrow'
                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-md shadow-cyan-500/10'
@@ -551,10 +677,54 @@ export default function App() {
 
         {/* Center / Right Control Badges */}
         <div className="flex items-center gap-2.5 sm:gap-3.5">
+          {/* Sound FX Mute/Unmute Toggle */}
+          <button
+            id="header-sound-effects-toggle"
+            onClick={() => {
+              const next = soundEffects.toggleSound();
+              setSoundEnabled(next);
+            }}
+            className={`p-2 rounded-xl border text-xs transition flex items-center gap-1.5 ${
+              soundEnabled
+                ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/25 shadow-sm shadow-cyan-500/10'
+                : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300'
+            }`}
+            title={soundEnabled ? 'Futuristic Sound Effects Active (Click to Mute)' : 'Sound Effects Muted (Click to Enable)'}
+          >
+            {soundEnabled ? (
+              <Volume2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            ) : (
+              <VolumeX className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden 2xl:inline text-[10px] font-mono">
+              {soundEnabled ? 'FX ON' : 'FX OFF'}
+            </span>
+          </button>
+
+          {/* Real-time Cyber Notification Bell */}
+          <button
+            id="header-notification-center-btn"
+            onClick={() => {
+              showNotification({
+                title: '⚡ VERILANCE Cyber Sentinel',
+                description: '3% escrow multi-sig active. View Once 1-Time DRM protection loaded.',
+                type: 'info',
+              });
+            }}
+            className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-cyan-300 transition relative"
+            title="VERILANCE Notifications (Click to trigger holographic chime)"
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-cyan-400 ring-2 ring-[#0a0d13] animate-pulse" />
+          </button>
+
           {/* Create Deal Quick Action Button */}
           <button
             id="header-create-deal-btn"
-            onClick={() => setIsDealModalOpen(true)}
+            onClick={() => {
+              soundEffects.playTabClick();
+              setIsDealModalOpen(true);
+            }}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 text-slate-950 font-bold text-xs transition shadow-md shadow-cyan-500/20"
           >
             <Handshake className="w-3.5 h-3.5" />
@@ -564,7 +734,10 @@ export default function App() {
           {/* Active Role Indicator & Switcher */}
           <button
             id="header-role-toggle-pill"
-            onClick={handleToggleUserRole}
+            onClick={() => {
+              soundEffects.playToggleSound();
+              handleToggleUserRole();
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition"
             title="Click to switch between Creator (Client) and Editor (Freelancer)"
           >
@@ -578,7 +751,10 @@ export default function App() {
           {/* Premium Verification Badge Card / Indicator */}
           <button
             id="header-premium-badge-btn"
-            onClick={() => setCurrentView('profile')}
+            onClick={() => {
+              soundEffects.playNavTabClick();
+              setCurrentView('profile');
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-indigo-600/20 hover:from-blue-600/30 hover:to-purple-600/30 border border-purple-500/40 text-purple-200 text-xs font-bold transition shadow-sm"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
@@ -592,7 +768,7 @@ export default function App() {
           <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#131822] border border-white/10 text-xs">
             <Wallet className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-slate-400">Escrow:</span>
-            <span className="font-bold text-emerald-400">
+            <span className="font-bold text-cyan-400">
               ₹{currentUser.walletBalance.toLocaleString('en-IN')}
             </span>
           </div>
@@ -603,7 +779,10 @@ export default function App() {
               <>
                 <button
                   id="header-user-profile-menu-btn"
-                  onClick={() => setCurrentView('profile')}
+                  onClick={() => {
+                    soundEffects.playNavTabClick();
+                    setCurrentView('profile');
+                  }}
                   className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#141822] hover:bg-[#1a202d] border border-white/10 transition group"
                   title="View Profile & Security"
                 >
@@ -685,7 +864,7 @@ export default function App() {
                     id: `ch-${Date.now()}`,
                     name: talentName,
                     subtitle: 'Escrow Direct Channel',
-                    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+                    avatar: getRandomDefaultAvatar().svgDataUri,
                     isGroup: false,
                     unreadCount: 0,
                     isOnline: true,
@@ -838,7 +1017,10 @@ export default function App() {
       >
         <button
           id="mobile-nav-marketplace"
-          onClick={() => setCurrentView('marketplace')}
+          onClick={() => {
+            soundEffects.playNavTabClick();
+            setCurrentView('marketplace');
+          }}
           className={`flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl transition ${
             currentView === 'marketplace'
               ? 'text-cyan-400 bg-cyan-500/10 font-bold'
@@ -851,7 +1033,10 @@ export default function App() {
 
         <button
           id="mobile-nav-escrow"
-          onClick={() => setCurrentView('escrow')}
+          onClick={() => {
+            soundEffects.playNavTabClick();
+            setCurrentView('escrow');
+          }}
           className={`flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl transition relative ${
             currentView === 'escrow'
               ? 'text-cyan-400 bg-cyan-500/10 font-bold'
@@ -860,14 +1045,17 @@ export default function App() {
         >
           <div className="relative">
             <MessageSquare className="w-4 h-4 mb-1" />
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-[#0a0d13]" />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-cyan-400 rounded-full ring-2 ring-[#0a0d13]" />
           </div>
           <span className="text-[10px] tracking-tight">Escrow</span>
         </button>
 
         <button
           id="mobile-nav-deal"
-          onClick={() => setIsDealModalOpen(true)}
+          onClick={() => {
+            soundEffects.playTabClick();
+            setIsDealModalOpen(true);
+          }}
           className="flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl text-teal-300 hover:text-teal-200 transition"
         >
           <div className="w-6 h-6 rounded-full bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 flex items-center justify-center mb-0.5 shadow-md shadow-cyan-500/20">
@@ -878,7 +1066,10 @@ export default function App() {
 
         <button
           id="mobile-nav-profile"
-          onClick={() => setCurrentView('profile')}
+          onClick={() => {
+            soundEffects.playNavTabClick();
+            setCurrentView('profile');
+          }}
           className={`flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl transition ${
             currentView === 'profile'
               ? 'text-purple-400 bg-purple-500/10 font-bold'
@@ -889,6 +1080,12 @@ export default function App() {
           <span className="text-[10px] tracking-tight">Profile & KYC</span>
         </button>
       </nav>
+
+      {/* 5. FLOATING & MOVEABLE VAKRA AI ASSISTANT WIDGET */}
+      <VakraFloatingAssistant
+        onAutoDraftAgreement={handleVakraAutoDraft}
+        onOpenDealModal={() => setIsDealModalOpen(true)}
+      />
     </div>
   );
 }

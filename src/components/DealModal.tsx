@@ -11,6 +11,7 @@ import {
   DollarSign,
   AlertCircle
 } from 'lucide-react';
+import { soundEffects } from '../lib/soundEffects';
 
 interface DealModalProps {
   isOpen: boolean;
@@ -172,7 +173,10 @@ export const DealModal: React.FC<DealModalProps> = ({
                   name="deal-role"
                   value="client"
                   checked={senderRole === 'client'}
-                  onChange={() => setSenderRole('client')}
+                  onChange={() => {
+                    soundEffects.playTabClick();
+                    setSenderRole('client');
+                  }}
                   className="accent-cyan-400 w-4 h-4"
                 />
                 <div className="text-xs">
@@ -193,7 +197,10 @@ export const DealModal: React.FC<DealModalProps> = ({
                   name="deal-role"
                   value="freelancer"
                   checked={senderRole === 'freelancer'}
-                  onChange={() => setSenderRole('freelancer')}
+                  onChange={() => {
+                    soundEffects.playTabClick();
+                    setSenderRole('freelancer');
+                  }}
                   className="accent-teal-400 w-4 h-4"
                 />
                 <div className="text-xs">
@@ -294,8 +301,8 @@ export const DealModal: React.FC<DealModalProps> = ({
                 <span className="text-sm font-bold text-cyan-400">₹{commissionFee.toLocaleString('en-IN')}</span>
               </div>
               <div className="bg-[#12161f] p-2 rounded-lg border border-white/5">
-                <span className="text-[10px] text-emerald-400 block">Net Payout to Editor</span>
-                <span className="text-sm font-bold text-emerald-400">₹{netPayout.toLocaleString('en-IN')}</span>
+                <span className="text-[10px] text-cyan-300 block">Net Payout to Editor</span>
+                <span className="text-sm font-bold text-cyan-300">₹{netPayout.toLocaleString('en-IN')}</span>
               </div>
             </div>
           </div>

@@ -3,6 +3,8 @@ import { UserProfile, UserRole } from '../types';
 import { GalleryPermissionModal } from './GalleryPermissionModal';
 import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 import { checkEmailInDB } from '../lib/firebase';
+import { DEFAULT_AVATARS, getAvatarUrl } from '../lib/defaultAvatars';
+import { soundEffects } from '../lib/soundEffects';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -12,14 +14,15 @@ import {
   Video, 
   Film, 
   Lock, 
-  ArrowRight,
-  FileCheck,
-  AlertCircle,
-  Loader2,
-  Check,
-  Mail,
-  User,
-  AtSign
+  ArrowRight, 
+  FileCheck, 
+  AlertCircle, 
+  Loader2, 
+  Check, 
+  Mail, 
+  User, 
+  AtSign,
+  Camera
 } from 'lucide-react';
 
 const TAKEN_USERNAMES = new Set([
@@ -60,6 +63,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string>(user.avatar || DEFAULT_AVATARS[0].svgDataUri);
+  const avatarUploadRef = useRef<HTMLInputElement>(null);
+
+  const handleCustomAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setAvatarUrl(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Mobile Gallery Permission & File Ref
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +185,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       email: cleanEmail,
       recoveryEmail: recoveryEmail.trim() || undefined,
       role,
+      avatar: avatarUrl,
       idDocumentName: idDocName,
       hasVerifiedBadge: hasPurchasedBadge,
       kycStatus: idDocName ? 'verified' : 'pending',
@@ -212,6 +231,66 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         </div>
 
         <form onSubmit={handleSave} className="space-y-5">
+          {/* Avatar Selection: 3 Minimal Dark-Aesthetic Eye Avatars */}
+          <div className="p-4 rounded-xl bg-[#151922] border border-white/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Profile Avatar Selection
+                </label>
+                <p className="text-[11px] text-slate-400">
+                  Select one of 3 minimal dark-aesthetic eye avatars or upload your custom picture.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {DEFAULT_AVATARS.map((av) => {
+                const isSelected = avatarUrl === av.svgDataUri || avatarUrl === av.url;
+                return (
+                  <button
+                    key={av.id}
+                    type="button"
+                    onClick={() => {
+                      soundEffects.playSubTabClick();
+                      setAvatarUrl(av.svgDataUri);
+                    }}
+                    className={`flex items-center gap-2.5 p-2 rounded-xl border transition ${
+                      isSelected
+                        ? 'bg-cyan-500/15 border-cyan-400 text-white ring-1 ring-cyan-400/50'
+                        : 'bg-black border-white/10 text-slate-400 hover:border-white/30'
+                    }`}
+                  >
+                    <div className="w-9 h-9 rounded-lg overflow-hidden bg-black border border-white/20 p-0.5 flex items-center justify-center">
+                      <img src={av.svgDataUri} alt={av.name} className="w-full h-full object-contain" />
+                    </div>
+                    <div className="text-left text-xs font-semibold">
+                      <span className="block text-white leading-tight">{av.name}</span>
+                      <span className="block text-[9px] text-slate-400">{av.subtitle}</span>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-cyan-400 ml-1" />}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => avatarUploadRef.current?.click()}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white transition"
+              >
+                <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Upload Custom</span>
+              </button>
+              <input
+                type="file"
+                ref={avatarUploadRef}
+                accept="image/*"
+                className="hidden"
+                onChange={handleCustomAvatarFile}
+              />
+            </div>
+          </div>
+
           {/* Identity Fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -280,7 +359,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   placeholder=""
                   className={`w-full pl-8 pr-9 py-2.5 bg-[#161a22] border rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition ${
                     usernameStatus === 'available'
-                      ? 'border-emerald-500/60 focus:ring-emerald-500/50'
+                      ? 'border-cyan-500/60 focus:ring-cyan-500/50'
                       : usernameStatus === 'taken' || usernameStatus === 'invalid'
                       ? 'border-red-500/60 focus:ring-red-500/50'
                       : 'border-white/10 focus:border-cyan-500/60'
@@ -288,14 +367,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   {usernameStatus === 'checking' && <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />}
-                  {usernameStatus === 'available' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                  {usernameStatus === 'available' && <CheckCircle2 className="w-4 h-4 text-cyan-400" />}
                   {usernameStatus === 'taken' && <AlertCircle className="w-4 h-4 text-red-400" />}
                 </div>
               </div>
 
               {usernameFeedback && (
                 <p className={`text-[11px] mt-1 font-medium ${
-                  usernameStatus === 'available' ? 'text-emerald-400' : 'text-red-400'
+                  usernameStatus === 'available' ? 'text-cyan-400' : 'text-red-400'
                 }`}>
                   {usernameFeedback}
                 </p>
@@ -354,7 +433,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <button
                 type="button"
                 id="role-creator-btn"
-                onClick={() => setRole('creator')}
+                onClick={() => {
+                  soundEffects.playTabClick();
+                  setRole('creator');
+                }}
                 className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3.5 ${
                   role === 'creator'
                     ? 'bg-cyan-500/10 border-cyan-500/50 text-white shadow-lg shadow-cyan-500/5'
@@ -378,7 +460,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <button
                 type="button"
                 id="role-editor-btn"
-                onClick={() => setRole('editor')}
+                onClick={() => {
+                  soundEffects.playTabClick();
+                  setRole('editor');
+                }}
                 className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3.5 ${
                   role === 'editor'
                     ? 'bg-teal-500/10 border-teal-500/50 text-white shadow-lg shadow-teal-500/5'
@@ -487,8 +572,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </div>
 
             {badgeSuccessMessage && (
-              <div className="mt-3 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <div className="mt-3 p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-cyan-400" />
                 <span>Simulated payment received via UPI Escrow: Blue/Purple Trust Badge permanently attached to your profile!</span>
               </div>
             )}

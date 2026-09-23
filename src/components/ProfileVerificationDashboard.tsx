@@ -31,6 +31,8 @@ import { UserProfile, UserRole } from '../types';
 import { subscribeDeals } from '../lib/firebase';
 import { GalleryPermissionModal } from './GalleryPermissionModal';
 import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
+import { DEFAULT_AVATARS, getAvatarUrl } from '../lib/defaultAvatars';
+import { soundEffects } from '../lib/soundEffects';
 
 interface TransactionItem {
   id: string;
@@ -66,7 +68,33 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   const [role, setRole] = useState<UserRole>(currentUser?.role || 'editor'); // 'editor' vs 'creator'
   const [isVerifiedPro, setIsVerifiedPro] = useState(currentUser?.hasVerifiedBadge ?? false);
   const [kycStatus, setKycStatus] = useState<'unverified' | 'pending' | 'verified'>(currentUser?.kycStatus || 'unverified');
-  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar || DEFAULT_AVATARS[0].svgDataUri);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSelectDefaultAvatar = (svgUri: string) => {
+    soundEffects.playSubTabClick();
+    setAvatarUrl(svgUri);
+    if (onUpdateProfile) {
+      onUpdateProfile({ avatar: svgUri });
+    }
+  };
+
+  const handleCustomAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const newUri = event.target.result as string;
+          setAvatarUrl(newUri);
+          if (onUpdateProfile) {
+            onUpdateProfile({ avatar: newUri });
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Keep state synced with currentUser if it changes
   React.useEffect(() => {
@@ -156,6 +184,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
 
   // Handlers
   const handleToggleRole = () => {
+    soundEffects.playToggleSound();
     setRole((prev) => (prev === 'editor' ? 'creator' : 'editor'));
   };
 
@@ -179,6 +208,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
 
   const handleSubmitVerification = (e: React.FormEvent) => {
     e.preventDefault();
+    soundEffects.playNotificationSound();
     if (!uploadedFileName) {
       setUploadedFileName('Aadhaar_Govt_Issued_National_Card.pdf');
       setUploadedFileSize('1.84 MB');
@@ -194,6 +224,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   };
 
   const handleSimulatePaymentSuccess = () => {
+    soundEffects.playNotificationSound();
     setIsVerifiedPro(true);
     setIsCheckoutOpen(false);
     setShowCelebrationBanner(true);
@@ -242,15 +273,52 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
           {/* Avatar & User Details */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-5">
-            {/* Avatar Placeholder with Status Ring */}
-            <div className="relative shrink-0">
-              <img
-                src={avatarUrl}
-                alt={fullName}
-                className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover ring-2 ring-white/10 shadow-xl"
-              />
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-400 ring-4 ring-[#121216]" />
+          <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+            {/* Avatar Preview with Status Ring & 3 Minimal Dark Eye Options */}
+            <div className="flex flex-col items-center gap-2.5 shrink-0">
+              <div className="relative">
+                <img
+                  src={avatarUrl}
+                  alt={fullName}
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover ring-2 ring-white/10 shadow-xl bg-black"
+                />
+                <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-cyan-400 ring-4 ring-[#121216]" />
+              </div>
+
+              {/* 3 Minimal Dark-Aesthetic Eye Avatars Quick-Switch */}
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/10" title="Switch default minimal dark eye avatar">
+                {DEFAULT_AVATARS.map((av, idx) => {
+                  const isCurrent = avatarUrl === av.svgDataUri || avatarUrl === av.url;
+                  return (
+                    <button
+                      key={av.id}
+                      type="button"
+                      onClick={() => handleSelectDefaultAvatar(av.svgDataUri)}
+                      className={`w-7 h-7 rounded-lg overflow-hidden border p-0.5 transition bg-black ${
+                        isCurrent ? 'border-cyan-400 ring-1 ring-cyan-400 scale-105' : 'border-white/20 hover:border-white/40'
+                      }`}
+                      title={`${av.name} (${av.subtitle})`}
+                    >
+                      <img src={av.svgDataUri} alt={av.name} className="w-full h-full object-contain" />
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => avatarFileInputRef.current?.click()}
+                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition"
+                  title="Upload custom profile picture"
+                >
+                  <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                </button>
+                <input
+                  type="file"
+                  ref={avatarFileInputRef}
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleCustomAvatarUpload}
+                />
+              </div>
             </div>
 
             {/* Name, Verified Badge Space, Email & Rating */}
@@ -319,7 +387,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-medium text-slate-300">
                   <span className={`w-2 h-2 rounded-full ${
                     kycStatus === 'verified'
-                      ? 'bg-emerald-400'
+                      ? 'bg-cyan-400'
                       : kycStatus === 'pending'
                       ? 'bg-cyan-400 animate-pulse'
                       : 'bg-amber-400'
@@ -420,7 +488,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
               kycStatus === 'pending'
                 ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 animate-pulse'
                 : kycStatus === 'verified'
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
                 : 'bg-white/[0.04] border-white/10 text-slate-400'
             }`}>
               {kycStatus === 'pending'
@@ -482,7 +550,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                   isDragging
                     ? 'border-cyan-400 bg-cyan-500/10'
                     : uploadedFileName
-                    ? 'border-emerald-500/40 bg-emerald-500/5'
+                    ? 'border-cyan-500/40 bg-cyan-500/5'
                     : 'border-white/15 bg-[#0e0e13] hover:border-white/30 hover:bg-[#121217]'
                 }`}
               >
@@ -498,7 +566,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 <div className="flex flex-col items-center justify-center gap-2">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
                     uploadedFileName
-                      ? 'bg-emerald-500/20 text-emerald-400'
+                      ? 'bg-cyan-500/20 text-cyan-400'
                       : 'bg-white/[0.06] text-slate-400'
                   }`}>
                     {uploadedFileName ? <FileCheck className="w-6 h-6" /> : <Upload className="w-6 h-6" />}
@@ -546,7 +614,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
               <button
                 type="submit"
                 id="btn-submit-verification-data"
-                className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 hover:brightness-110 active:scale-[0.99] text-slate-950 font-black text-sm tracking-wide shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-black text-sm tracking-wide shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Submit Verification Data</span>
                 <ArrowRight className="w-4 h-4" />
@@ -654,11 +722,11 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
 
             {/* Permanent Active State Badge If Subscribed */}
             {isVerifiedPro && (
-              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2.5">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-300 flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-cyan-400 shrink-0" />
                 <div>
                   <span className="font-bold block">Permanent Verified Pro Status Active</span>
-                  <span className="text-[11px] text-emerald-400/80">Trust Shield permanently displayed on your hero header.</span>
+                  <span className="text-[11px] text-cyan-400/80">Trust Shield permanently displayed on your hero header.</span>
                 </div>
               </div>
             )}
@@ -679,7 +747,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                   <span className="text-[10px] text-cyan-400 block font-mono">KYC & Anti-Scam Verification Mode</span>
                 </div>
               </div>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
             </div>
 
             <div className="p-3 rounded-xl bg-[#0c0e14] border border-white/[0.06] text-xs space-y-1.5">
@@ -721,7 +789,10 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
             {(['all', 'Completed', 'Escrow Released', 'Disputed'] as const).map((filter) => (
               <button
                 key={filter}
-                onClick={() => setTableFilter(filter)}
+                onClick={() => {
+                  soundEffects.playSubTabClick();
+                  setTableFilter(filter);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   tableFilter === filter
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
@@ -803,7 +874,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                     <td className="py-4 px-4 whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
                         tx.status === 'Completed'
-                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                          ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
                           : tx.status === 'Escrow Released'
                           ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
                           : tx.status === 'Disputed'
@@ -812,7 +883,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${
                           tx.status === 'Completed'
-                            ? 'bg-emerald-400'
+                            ? 'bg-cyan-400'
                             : tx.status === 'Escrow Released'
                             ? 'bg-cyan-400'
                             : tx.status === 'Disputed'
@@ -870,7 +941,10 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 <button
                   type="button"
                   id="checkout-method-upi"
-                  onClick={() => setPaymentMethod('upi')}
+                  onClick={() => {
+                    soundEffects.playTabClick();
+                    setPaymentMethod('upi');
+                  }}
                   className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-1.5 ${
                     paymentMethod === 'upi'
                       ? 'bg-purple-600/20 border-purple-500 text-white shadow-sm'
@@ -884,7 +958,10 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 <button
                   type="button"
                   id="checkout-method-card"
-                  onClick={() => setPaymentMethod('card')}
+                  onClick={() => {
+                    soundEffects.playTabClick();
+                    setPaymentMethod('card');
+                  }}
                   className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-1.5 ${
                     paymentMethod === 'card'
                       ? 'bg-purple-600/20 border-purple-500 text-white shadow-sm'
@@ -898,7 +975,10 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 <button
                   type="button"
                   id="checkout-method-paypal"
-                  onClick={() => setPaymentMethod('paypal')}
+                  onClick={() => {
+                    soundEffects.playTabClick();
+                    setPaymentMethod('paypal');
+                  }}
                   className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-1.5 ${
                     paymentMethod === 'paypal'
                       ? 'bg-purple-600/20 border-purple-500 text-white shadow-sm'
@@ -916,7 +996,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
               <div className="space-y-3 p-3.5 rounded-2xl bg-[#16161a] border border-white/5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-400">Virtual Payment Address (VPA)</span>
-                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                  <span className="text-cyan-400 font-semibold flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" /> Auto-Verified
                   </span>
                 </div>

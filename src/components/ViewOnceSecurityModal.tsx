@@ -4,7 +4,6 @@ import {
   ShieldAlert, 
   ShieldCheck, 
   EyeOff, 
-  Clock, 
   Lock, 
   AlertTriangle, 
   X, 
@@ -28,9 +27,6 @@ export const ViewOnceSecurityModal: React.FC<ViewOnceSecurityModalProps> = ({
   currentUser,
   onCloseAndExpire,
 }) => {
-  // Duration in seconds: if video, default 25s, if image, 15s
-  const initialDuration = media.durationSeconds || (media.mediaType === 'video' ? 25 : 15);
-  const [timeLeft, setTimeLeft] = useState<number>(initialDuration);
   const [isFocusLost, setIsFocusLost] = useState<boolean>(false);
   const [focusLostReason, setFocusLostReason] = useState<string>('');
   const [securityToast, setSecurityToast] = useState<string | null>(null);
@@ -40,7 +36,6 @@ export const ViewOnceSecurityModal: React.FC<ViewOnceSecurityModalProps> = ({
   const [currentTimeStr, setCurrentTimeStr] = useState(() => new Date().toLocaleTimeString());
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const timerRef = useRef<any>(null);
   const toastTimeoutRef = useRef<any>(null);
 
   // Trigger security toast
@@ -65,29 +60,8 @@ export const ViewOnceSecurityModal: React.FC<ViewOnceSecurityModalProps> = ({
     return () => clearInterval(watermarkInterval);
   }, []);
 
-  // 2. Countdown Timer
-  useEffect(() => {
-    // Only tick down if window is focused and media is active
-    if (isFocusLost) return;
-
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current);
-          handleExpire();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isFocusLost]);
-
+  // Handlers for closing and expiring
   const handleExpire = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
     onCloseAndExpire();
   };
 
@@ -220,8 +194,6 @@ export const ViewOnceSecurityModal: React.FC<ViewOnceSecurityModalProps> = ({
     };
   }, []);
 
-  const progressPercent = Math.max(0, (timeLeft / initialDuration) * 100);
-
   return (
     <div 
       id="view-once-modal-overlay"
@@ -249,41 +221,19 @@ export const ViewOnceSecurityModal: React.FC<ViewOnceSecurityModalProps> = ({
           </div>
         </div>
 
-        {/* Center: Live Timer Countdown Badge */}
+        {/* Center: View Once Active Security Indicator (No Timelines/Timers) */}
         <div className="flex items-center gap-2">
-          <div className="px-3.5 py-1.5 rounded-xl bg-[#0f1522] border border-cyan-500/30 flex items-center gap-2.5 shadow-inner">
-            <Clock className={`w-4 h-4 ${timeLeft <= 5 ? 'text-red-400 animate-pulse' : 'text-cyan-400'}`} />
-            <div className="flex flex-col">
-              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold leading-none">
-                Expires In
-              </span>
-              <span className={`text-sm font-mono font-black leading-tight ${
-                timeLeft <= 5 ? 'text-red-400 animate-pulse' : 'text-cyan-300'
-              }`}>
-                00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
-              </span>
+          <div className="px-3.5 py-1.5 rounded-xl bg-[#0f1522] border border-cyan-500/30 flex items-center gap-2 shadow-inner">
+            <div className="w-5 h-5 rounded-full border-2 border-cyan-400 flex items-center justify-center text-[10px] font-black font-mono text-cyan-300">
+              1
             </div>
-
-            {/* Circular Mini Progress Ring */}
-            <div className="relative w-5 h-5 flex items-center justify-center">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                <path
-                  className="text-slate-800"
-                  strokeWidth="4"
-                  stroke="currentColor"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-                <path
-                  className={`${timeLeft <= 5 ? 'text-red-400' : 'text-cyan-400'} transition-all duration-1000`}
-                  strokeDasharray={`${progressPercent}, 100`}
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-              </svg>
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase tracking-wider text-cyan-400 font-bold leading-none">
+                Single View Protected
+              </span>
+              <span className="text-[11px] font-semibold text-slate-300 leading-tight">
+                Destroys On Exit
+              </span>
             </div>
           </div>
         </div>

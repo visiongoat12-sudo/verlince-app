@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <rect width="512" height="512" fill="#000000"/>
+  <!-- Left Crescent Eye -->
+  <path d="M 98 285 C 122 245 182 240 238 288 C 188 262 136 262 98 285 Z" fill="#ffffff" />
+  <!-- Right Crescent Eye -->
+  <path d="M 274 288 C 330 240 390 245 414 285 C 376 262 324 262 274 288 Z" fill="#ffffff" />
+</svg>

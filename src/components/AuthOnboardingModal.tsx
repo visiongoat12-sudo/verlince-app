@@ -2,8 +2,10 @@ import React, { useState, useEffect, useId, useRef } from 'react';
 import { UserProfile, UserRole } from '../types';
 import { VerilanceLogo } from './VerilanceLogo';
 import { saveUserToDB, checkUsernameInDB, checkEmailInDB, fetchUserByEmailOrUsername } from '../lib/firebase';
+import { DEFAULT_AVATARS, getRandomDefaultAvatar, getAvatarUrl } from '../lib/defaultAvatars';
 import { GalleryPermissionModal } from './GalleryPermissionModal';
 import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
+import { soundEffects } from '../lib/soundEffects';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -26,7 +28,9 @@ import {
   ShieldAlert,
   Smartphone,
   Eye,
-  EyeOff
+  EyeOff,
+  Camera,
+  Image as ImageIcon
 } from 'lucide-react';
 
 // System reserved handles in the VERILANCE ledger
@@ -75,6 +79,11 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
   const [usernameFeedback, setUsernameFeedback] = useState<string>('');
   const [suggestedUsernames, setSuggestedUsernames] = useState<string[]>([]);
   const [role, setRole] = useState<UserRole>(currentUser?.role || 'editor');
+
+  // Minimal Dark-Aesthetic Eye Avatar Selection (Randomly assigned or chosen by user)
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string>(() => getRandomDefaultAvatar().id);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   // Step 3: Security & Recovery Email (empty by default)
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -355,8 +364,23 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
     }, 150);
   };
 
+  // Handle Custom Avatar Image Upload (if user chooses to upload photo instead of dark eye avatars)
+  const handleCustomAvatarSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setCustomAvatarUrl(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // Mode switcher that guarantees clean input fields
   const handleModeSwitch = (mode: AuthMode) => {
+    soundEffects.playTabClick();
     setAuthMode(mode);
     setAuthError(null);
     setEmail('');
@@ -383,20 +407,21 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
     const todayStr = new Date().toISOString().split('T')[0];
     const expiryStr = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
 
+    // Minimal dark-aesthetic eye avatar fallback (no unsplash/mock profiles)
+    const finalAvatar = customAvatarUrl || getAvatarUrl(selectedAvatarId);
+
     completeAuthentication({
       id: `usr-${Date.now()}`,
       name: fullName || username || 'VERILANCE Member',
       username: username.toLowerCase().trim(),
       email: cleanEmail,
-      recoveryEmail:recoveryEmail.trim()||email,      
+      recoveryEmail: recoveryEmail.trim() || email,      
       role: role,
       idDocumentName: idDocName || null,
       hasVerifiedBadge: wantsVerifiedBadge,
       badgePurchasedAt: wantsVerifiedBadge ? todayStr : undefined,
       badgeExpiresAt: wantsVerifiedBadge ? expiryStr : undefined,
-      avatar: role === 'creator' 
-        ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
-        : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      avatar: finalAvatar,
       kycStatus: idDocName ? 'pending' : 'unverified',
       walletBalance: 0,
     });
@@ -705,7 +730,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   placeholder=""
                   className={`w-full pl-8 pr-10 py-2.5 bg-[#141822] border rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition ${
                     usernameStatus === 'available'
-                      ? 'border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/50'
+                      ? 'border-cyan-500/60 focus:ring-1 focus:ring-cyan-500/50'
                       : usernameStatus === 'taken' || usernameStatus === 'invalid'
                       ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/50'
                       : 'border-white/10 focus:border-cyan-500/60'
@@ -717,7 +742,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
                   )}
                   {usernameStatus === 'available' && (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <CheckCircle2 className="w-4 h-4 text-cyan-400" />
                   )}
                   {usernameStatus === 'taken' && (
                     <AlertCircle className="w-4 h-4 text-red-400" />
@@ -729,7 +754,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
               {usernameFeedback && (
                 <div className={`mt-1.5 text-xs flex items-center gap-1.5 font-medium ${
                   usernameStatus === 'available'
-                    ? 'text-emerald-400'
+                    ? 'text-cyan-400'
                     : usernameStatus === 'taken' || usernameStatus === 'invalid'
                     ? 'text-red-400'
                     : 'text-cyan-400'
@@ -772,7 +797,10 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 <button
                   type="button"
                   id="role-select-creator"
-                  onClick={() => setRole('creator')}
+                  onClick={() => {
+                    soundEffects.playTabClick();
+                    setRole('creator');
+                  }}
                   className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3 ${
                     role === 'creator'
                       ? 'bg-cyan-500/10 border-cyan-500/60 text-white shadow-lg shadow-cyan-500/5'
@@ -796,7 +824,10 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                 <button
                   type="button"
                   id="role-select-editor"
-                  onClick={() => setRole('editor')}
+                  onClick={() => {
+                    soundEffects.playTabClick();
+                    setRole('editor');
+                  }}
                   className={`p-3.5 rounded-xl border text-left transition flex items-start gap-3 ${
                     role === 'editor'
                       ? 'bg-teal-500/10 border-teal-500/60 text-white shadow-lg shadow-teal-500/5'
@@ -816,6 +847,114 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     </p>
                   </div>
                 </button>
+              </div>
+            </div>
+
+            {/* Default Avatar Selection (Minimal Dark Aesthetic with White Stylized Eyes) */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                    Default Avatar Selection <span className="text-cyan-400">*</span>
+                  </label>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Select one of 3 minimal dark-aesthetic avatars (white stylized eyes on black), or upload your own.
+                  </p>
+                </div>
+                {customAvatarUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomAvatarUrl(null)}
+                    className="text-[11px] text-red-400 hover:underline"
+                  >
+                    Reset to Default
+                  </button>
+                )}
+              </div>
+
+              {/* 3 Minimal Dark Eye Avatars Grid */}
+              <div className="grid grid-cols-3 gap-2.5">
+                {DEFAULT_AVATARS.map((avatarOpt) => {
+                  const isSelected = !customAvatarUrl && selectedAvatarId === avatarOpt.id;
+                  return (
+                    <button
+                      key={avatarOpt.id}
+                      type="button"
+                      onClick={() => {
+                        soundEffects.playSubTabClick();
+                        setSelectedAvatarId(avatarOpt.id);
+                        setCustomAvatarUrl(null);
+                      }}
+                      className={`relative p-2.5 rounded-2xl border text-center transition flex flex-col items-center gap-2 group ${
+                        isSelected
+                          ? 'bg-cyan-500/10 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.25)] ring-1 ring-cyan-400'
+                          : 'bg-[#141822] border-white/10 hover:border-white/25'
+                      }`}
+                    >
+                      {/* Avatar Square Preview */}
+                      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-black border border-white/20 p-1 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
+                        <img
+                          src={avatarOpt.svgDataUri}
+                          alt={avatarOpt.name}
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <div className="text-[11px] font-bold text-white leading-tight">
+                          {avatarOpt.name}
+                        </div>
+                        <div className="text-[9px] text-slate-400 leading-none">
+                          {avatarOpt.subtitle}
+                        </div>
+                      </div>
+
+                      {/* Selected Badge */}
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-cyan-400 text-slate-950 flex items-center justify-center">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Or Custom Upload Option */}
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03] border border-white/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-slate-300">
+                    {customAvatarUrl ? (
+                      <img src={customAvatarUrl} alt="Custom" className="w-full h-full object-cover rounded-lg" />
+                    ) : (
+                      <Camera className="w-4 h-4 text-cyan-400" />
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-white block">
+                      {customAvatarUrl ? 'Custom Image Uploaded' : 'Upload Custom Profile Picture'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">
+                      {customAvatarUrl ? 'Using custom photo instead of default avatar' : 'PNG, JPG or SVG (Max 5MB)'}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => avatarFileInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-medium text-white transition flex items-center gap-1.5"
+                >
+                  <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{customAvatarUrl ? 'Change' : 'Upload'}</span>
+                </button>
+                <input
+                  type="file"
+                  ref={avatarFileInputRef}
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleCustomAvatarSelected}
+                />
               </div>
             </div>
 
@@ -954,7 +1093,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
             <div className="border border-dashed border-white/15 rounded-2xl p-4 bg-[#141822]/60 hover:bg-[#141822] transition flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-slate-400 shrink-0">
-                  {idDocName ? <FileCheck className="w-5 h-5 text-emerald-400" /> : <Upload className="w-5 h-5" />}
+                  {idDocName ? <FileCheck className="w-5 h-5 text-cyan-400" /> : <Upload className="w-5 h-5" />}
                 </div>
                 <div>
                   <p className="text-xs font-bold text-white">

@@ -47,6 +47,7 @@ import { WatermarkVideoPreview } from './WatermarkVideoPreview';
 import { ViewOnceSecurityModal } from './ViewOnceSecurityModal';
 import { GalleryPermissionModal } from './GalleryPermissionModal';
 import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
+import { soundEffects } from '../lib/soundEffects';
 
 interface ChatSectionProps {
   currentUser: UserProfile;
@@ -95,7 +96,16 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
   const [viewOnceType, setViewOnceType] = useState<'video' | 'image'>('video');
   const [viewOnceTitle, setViewOnceTitle] = useState('Teaser Hook 4K Edit Proof');
   const [viewOnceCaption, setViewOnceCaption] = useState('1-Time protected draft cut. Disappears after viewing.');
-  const [viewOnceDuration, setViewOnceDuration] = useState(20);
+
+  // View Once Toggle for Messaging/Chat Attachments
+  const [isViewOnceToggleActive, setIsViewOnceToggleActive] = useState<boolean>(false);
+  const [pendingAttachment, setPendingAttachment] = useState<{
+    file?: File;
+    previewUrl: string;
+    name: string;
+    sizeMb: string;
+    type: 'video' | 'image' | 'file';
+  } | null>(null);
 
   // Mobile Gallery Permission for Chat Media Attachments
   const chatFileInputRef = useRef<HTMLInputElement>(null);
@@ -119,10 +129,30 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      const icon = file.type.startsWith('video') ? '🎥' : file.type.startsWith('image') ? '🖼️' : '📎';
-      onSendMessage(`${icon} [Attached: ${file.name} • ${sizeMb} MB]`);
+      const mediaType: 'video' | 'image' | 'file' = file.type.startsWith('video')
+        ? 'video'
+        : file.type.startsWith('image')
+        ? 'image'
+        : 'file';
+      const previewUrl = URL.createObjectURL(file);
+
+      setPendingAttachment({
+        file,
+        previewUrl,
+        name: file.name,
+        sizeMb: `${sizeMb} MB`,
+        type: mediaType,
+      });
       e.target.value = '';
     }
+  };
+
+  const handleRemovePendingAttachment = () => {
+    setPendingAttachment(null);
+  };
+
+  const handleToggleViewOnce = () => {
+    setIsViewOnceToggleActive((prev) => !prev);
   };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -155,7 +185,6 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
         ? 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&auto=format&fit=crop&q=80'
         : 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=300&auto=format&fit=crop&q=80',
       fileSize: viewOnceType === 'video' ? '18.4 MB • 4K 60FPS' : '4.2 MB • RAW TIFF',
-      durationSeconds: viewOnceDuration,
       isExpired: false,
     };
 
@@ -171,6 +200,38 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (pendingAttachment) {
+      if (isViewOnceToggleActive) {
+        // Send as View Once protected media attachment
+        const newMedia: ViewOnceMedia = {
+          id: `vo-${Date.now()}`,
+          mediaType: pendingAttachment.type === 'video' ? 'video' : 'image',
+          title: pendingAttachment.name,
+          url: pendingAttachment.previewUrl,
+          thumbnailUrl: pendingAttachment.previewUrl,
+          fileSize: pendingAttachment.sizeMb,
+          isExpired: false,
+        };
+        if (onSendViewOnceMedia) {
+          onSendViewOnceMedia(newMedia, inputText.trim() || undefined);
+        } else {
+          onSendMessage(`🔒 [View Once ${pendingAttachment.type === 'video' ? 'Video' : 'Photo'}: ${pendingAttachment.name}]`);
+        }
+      } else {
+        // Normal Attachment Message
+        const caption = inputText.trim();
+        const icon = pendingAttachment.type === 'video' ? '🎥' : pendingAttachment.type === 'image' ? '🖼️' : '📎';
+        const fileTag = `${icon} [Attached: ${pendingAttachment.name} • ${pendingAttachment.sizeMb}]`;
+        onSendMessage(caption ? `${caption}\n${fileTag}` : fileTag);
+      }
+
+      setPendingAttachment(null);
+      setInputText('');
+      setShowEmojiPicker(false);
+      return;
+    }
+
     if (!inputText.trim()) return;
     onSendMessage(inputText);
     setInputText('');
@@ -221,7 +282,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                   alt={currentUser.name} 
                   className="w-9 h-9 rounded-xl object-cover ring-1 ring-white/10 group-hover:ring-cyan-400/50 transition"
                 />
-                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0b0e14]" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-cyan-400 ring-2 ring-[#0b0e14]" />
               </div>
 
               <div>
@@ -263,7 +324,10 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
           <div className="grid grid-cols-2 p-1 bg-[#121620] rounded-xl border border-white/5">
             <button
               id="tab-direct-chat"
-              onClick={() => setChatTypeTab('direct')}
+              onClick={() => {
+                soundEffects.playTabClick();
+                setChatTypeTab('direct');
+              }}
               className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                 chatTypeTab === 'direct'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
@@ -276,7 +340,10 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
 
             <button
               id="tab-group-chat"
-              onClick={() => setChatTypeTab('group')}
+              onClick={() => {
+                soundEffects.playTabClick();
+                setChatTypeTab('group');
+              }}
               className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                 chatTypeTab === 'group'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
@@ -321,7 +388,10 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
               return (
                 <button
                   key={channel.id}
-                  onClick={() => onSelectChannel(channel)}
+                  onClick={() => {
+                    soundEffects.playSubTabClick();
+                    onSelectChannel(channel);
+                  }}
                   className={`w-full p-2.5 rounded-xl text-left transition flex items-center gap-3 ${
                     isSelected
                       ? 'bg-cyan-950/30 border border-cyan-500/30 text-white'
@@ -335,7 +405,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                       className="w-10 h-10 rounded-xl object-cover ring-1 ring-white/10"
                     />
                     {channel.isOnline && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0b0e14]" />
+                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-cyan-400 ring-2 ring-[#0b0e14]" />
                     )}
                   </div>
 
@@ -379,7 +449,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                 alt={safeActiveChannel.name} 
                 className="w-10 h-10 rounded-xl object-cover ring-1 ring-cyan-500/30"
               />
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0d1017]" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-cyan-400 ring-2 ring-[#0d1017]" />
             </div>
 
             <div>
@@ -392,8 +462,8 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                   KYC Verified
                 </span>
               </div>
-              <p className="text-[11px] text-emerald-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <p className="text-[11px] text-cyan-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
                 Online • Escrow Vault Protected
               </p>
             </div>
@@ -481,7 +551,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
 
               <div className="flex items-center gap-2 self-end sm:self-center">
                 {workDelivery ? (
-                  <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1">
+                  <span className="text-xs font-bold text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-lg border border-cyan-500/20 flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" />
                     Work Submitted
                   </span>
@@ -513,7 +583,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                 </p>
               </div>
               <div className="flex items-center gap-2 pt-2 text-[11px] text-slate-500">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
                 <span>Anti-Screenshot & VAKRA Sentinel Active</span>
               </div>
             </div>
@@ -725,12 +795,23 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                             <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
                               <span>{msg.viewOnceMedia.fileSize}</span>
                               <span>•</span>
-                              <span className="flex items-center gap-1 text-slate-400">
-                                <Clock className="w-3 h-3 text-cyan-400" />
-                                <span>{msg.viewOnceMedia.durationSeconds || 15}s Auto-Expire</span>
+                              <span className="flex items-center gap-1 text-cyan-300 font-semibold">
+                                <Lock className="w-3 h-3 text-cyan-400" />
+                                <span>Single View • Closes Permanently on Exit</span>
                               </span>
                             </div>
                           </div>
+                        </div>
+
+                        {/* Clear Sender & Receiver View Once Indication */}
+                        <div className="mt-2.5 px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 flex items-center justify-between text-[10px]">
+                          <span className="text-cyan-300 font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                            {msg.senderId === currentUser.id ? 'You sent View Once attachment' : 'View Once attachment received'}
+                          </span>
+                          <span className="text-slate-400 font-mono text-[9px]">
+                            {msg.viewOnceMedia.isExpired ? 'BUFFER PURGED' : 'ONE-TIME ACCESS'}
+                          </span>
                         </div>
 
                         {/* Security Warning Badge */}
@@ -761,7 +842,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                             <button
                               id={`btn-open-viewonce-${msg.viewOnceMedia.id}`}
                               onClick={() => handleOpenViewOnce(msg.viewOnceMedia!)}
-                              className="w-full py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-extrabold text-xs tracking-wide shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all flex items-center justify-center gap-2 cursor-pointer group"
+                              className="w-full py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-extrabold text-xs tracking-wide shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all flex items-center justify-center gap-2 cursor-pointer group"
                             >
                               <Eye className="w-4 h-4 group-hover:scale-110 transition-transform" />
                               <span>
@@ -863,6 +944,96 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
             </span>
           </div>
 
+          {/* Pending Attachment Preview Tray with View Once Toggle */}
+          {pendingAttachment && (
+            <div className="mb-2.5 p-2.5 rounded-xl bg-[#101522] border border-cyan-500/30 flex items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {pendingAttachment.type === 'image' ? (
+                  <img 
+                    src={pendingAttachment.previewUrl} 
+                    alt="Preview" 
+                    className="w-10 h-10 rounded-lg object-cover border border-cyan-500/40 shrink-0"
+                  />
+                ) : pendingAttachment.type === 'video' ? (
+                  <div className="w-10 h-10 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0">
+                    <Video className="w-5 h-5" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-slate-300 shrink-0">
+                    <Paperclip className="w-5 h-5" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white truncate max-w-[180px] sm:max-w-xs">
+                    {pendingAttachment.name}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {pendingAttachment.sizeMb} • {pendingAttachment.type.toUpperCase()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {/* View Once Toggle Button for Attachment */}
+                <button
+                  type="button"
+                  id="btn-toggle-pending-view-once"
+                  onClick={handleToggleViewOnce}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                    isViewOnceToggleActive
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.35)]'
+                      : 'bg-white/5 text-slate-400 border border-white/10 hover:text-white hover:bg-white/10'
+                  }`}
+                  title="Toggle View Once mode for this attachment"
+                >
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center text-[9px] font-black font-mono leading-none ${
+                    isViewOnceToggleActive ? 'border-cyan-400 text-cyan-300' : 'border-slate-500 text-slate-400'
+                  }`}>
+                    1
+                  </div>
+                  <span>View Once: <span className={isViewOnceToggleActive ? 'text-cyan-300 font-extrabold' : 'text-slate-400'}>{isViewOnceToggleActive ? 'ON' : 'OFF'}</span></span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRemovePendingAttachment}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition"
+                  title="Remove attachment"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Active View Once Mode Banner if toggled without attachment yet */}
+          {!pendingAttachment && isViewOnceToggleActive && (
+            <div className="mb-2 px-3 py-1.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 flex items-center justify-between text-xs text-cyan-300">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full border border-cyan-400 bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[9px] font-black font-mono">
+                  1
+                </div>
+                <span><strong>View Once Mode ON</strong>: Attach an image or video to send as a 1-time viewable asset.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSendViewOnceModal(true)}
+                  className="text-[11px] underline hover:text-cyan-100 font-semibold"
+                >
+                  Samples
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsViewOnceToggleActive(false)}
+                  className="text-slate-400 hover:text-white text-[11px]"
+                >
+                  Turn Off
+                </button>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSend} className="flex items-center gap-2">
             {/* THE 🤝 DEAL ICON BUTTON */}
             <button
@@ -881,28 +1052,12 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
               </span>
             </button>
 
-            {/* View Once Media Trigger Button (WhatsApp Style ①) */}
-            <button
-              type="button"
-              id="btn-trigger-view-once-modal"
-              onClick={() => setShowSendViewOnceModal(true)}
-              className="p-2.5 rounded-xl bg-gradient-to-tr from-cyan-500/15 to-teal-500/20 hover:from-cyan-500/25 hover:to-teal-500/35 border border-cyan-500/40 text-cyan-300 hover:text-white transition shrink-0 group relative shadow-md shadow-cyan-950/40"
-              title="Send View Once Media (Anti-Screen Capture)"
-            >
-              <div className="w-5 h-5 rounded-full border-2 border-cyan-400 flex items-center justify-center text-[10px] font-black font-mono leading-none group-hover:scale-110 transition">
-                1
-              </div>
-              <span className="absolute -top-9 left-1/2 -translate-x-1/2 hidden group-hover:block px-2 py-0.5 rounded bg-slate-900 border border-cyan-500/40 text-[10px] font-bold text-cyan-300 shadow whitespace-nowrap z-30">
-                View Once Media
-              </span>
-            </button>
-
             {/* Attachment Button with Mobile Gallery Permission */}
             <button
               type="button"
               id="btn-chat-attach-media"
               onClick={handleTriggerChatAttach}
-              className="p-2.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 transition shrink-0"
+              className="p-2.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 border border-white/10 transition shrink-0"
               title="Attach media, photos, or footage"
             >
               <Paperclip className="w-4 h-4" />
@@ -914,6 +1069,31 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
               className="hidden"
               onChange={handleChatFileSelected}
             />
+
+            {/* Dedicated View Once Toggle Button ("1" Icon) directly next to Attachment Button */}
+            <button
+              type="button"
+              id="btn-toggle-view-once"
+              onClick={handleToggleViewOnce}
+              className={`p-2.5 rounded-xl border transition shrink-0 relative group ${
+                isViewOnceToggleActive
+                  ? 'bg-gradient-to-tr from-cyan-500/25 to-teal-500/30 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.4)]'
+                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-400 hover:text-white'
+              }`}
+              title={isViewOnceToggleActive ? 'View Once is ON (Click to toggle OFF)' : 'Toggle View Once for attachments'}
+            >
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center text-[10px] font-black font-mono leading-none transition ${
+                isViewOnceToggleActive ? 'border-cyan-400 text-cyan-200 bg-cyan-950/60 scale-105' : 'border-slate-500 text-slate-400'
+              }`}>
+                1
+              </div>
+              {isViewOnceToggleActive && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+              )}
+              <span className="absolute -top-9 left-1/2 -translate-x-1/2 hidden group-hover:block px-2 py-0.5 rounded bg-slate-900 border border-cyan-500/40 text-[10px] font-bold text-cyan-300 shadow whitespace-nowrap z-30">
+                {isViewOnceToggleActive ? '① View Once: Enabled' : '① View Once: Disabled'}
+              </span>
+            </button>
 
             {/* Emoji & Sticker Picker Icon */}
             <button
@@ -1005,9 +1185,9 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    soundEffects.playTabClick();
                     setViewOnceType('video');
                     setViewOnceTitle('Gadget Teardown Hook Cut (4K)');
-                    setViewOnceDuration(20);
                   }}
                   className={`p-3.5 rounded-2xl border flex items-center gap-3 transition ${
                     viewOnceType === 'video'
@@ -1018,16 +1198,16 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                   <Video className="w-5 h-5 text-cyan-400 shrink-0" />
                   <div className="text-left">
                     <span className="text-xs font-bold block">1-Time Video</span>
-                    <span className="text-[10px] text-slate-400">Timer + Capture Shield</span>
+                    <span className="text-[10px] text-slate-400">Single View + Capture Shield</span>
                   </div>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
+                    soundEffects.playTabClick();
                     setViewOnceType('image');
                     setViewOnceTitle('Color Grade LUT Style Frame');
-                    setViewOnceDuration(15);
                   }}
                   className={`p-3.5 rounded-2xl border flex items-center gap-3 transition ${
                     viewOnceType === 'image'
@@ -1038,7 +1218,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                   <ImageIcon className="w-5 h-5 text-teal-400 shrink-0" />
                   <div className="text-left">
                     <span className="text-xs font-bold block">1-Time Photo</span>
-                    <span className="text-[10px] text-slate-400">High-Res Draft Proof</span>
+                    <span className="text-[10px] text-slate-400">Single View Draft Proof</span>
                   </div>
                 </button>
               </div>
@@ -1105,7 +1285,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
                 <button
                   type="button"
                   onClick={handleSendCustomViewOnce}
-                  className="w-2/3 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-extrabold text-xs tracking-wide shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-2/3 py-3 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-extrabold text-xs tracking-wide shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Eye className="w-4 h-4" />
                   <span>Send 1-Time Protected Media</span>
