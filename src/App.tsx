@@ -20,6 +20,8 @@ import { MarketplaceHome } from './components/MarketplaceHome';
 import { VerilanceLogo } from './components/VerilanceLogo';
 import { RazorpaySecureCheckoutModal, RazorpayPaymentResult } from './components/RazorpaySecureCheckoutModal';
 import { WhyVerilanceModal } from './components/WhyVerilanceModal';
+import { NotificationCenterModal, AppNotification } from './components/NotificationCenterModal';
+import { HotkeyCheatsheetModal } from './components/HotkeyCheatsheetModal';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -29,22 +31,31 @@ import {
   Bell, 
   Layers, 
   Menu, 
-  X,
-  FileText,
-  AlertCircle,
-  MessageSquare,
-  User,
-  Store,
-  PlusCircle,
-  Handshake,
-  Search,
-  LogOut,
-  RotateCcw,
-  Trash2,
-  Volume2,
-  VolumeX
+  X, 
+  FileText, 
+  AlertCircle, 
+  MessageSquare, 
+  User, 
+  Store, 
+  PlusCircle, 
+  Handshake, 
+  Search, 
+  LogOut, 
+  RotateCcw, 
+  Trash2, 
+  Volume2, 
+  VolumeX,
+  Keyboard
 } from 'lucide-react';
-import { fetchUserFromDB, saveUserToDB } from './lib/firebase';
+import { 
+  fetchUserFromDB, 
+  saveUserToDB, 
+  saveMessageToDB, 
+  subscribeMessages, 
+  updateViewOnceMediaInDB, 
+  saveDealToDB, 
+  subscribeDeals 
+} from './lib/firebase';
 import { 
   initializeCleanSlateAuth, 
   clearAllStorageData, 
@@ -107,18 +118,50 @@ export default function App() {
   // 6. Work Delivery State (Clean Slate: null initially)
   const [workDelivery, setWorkDelivery] = useState<WorkDelivery | null>(null);
 
-  // 7. Real-Time Holographic Notification Toast State
+  // 7. Real-Time Holographic Notification Toast & Center State
+  const [notifications, setNotifications] = useState<AppNotification[]>([
+    {
+      id: 'notif-1',
+      title: '🔒 Cyber-Escrow Protocol Online',
+      description: 'Razorpay 5% multi-sig vault active. Funds held securely until 4K master approval.',
+      type: 'escrow',
+      timestamp: 'Just now',
+      read: false,
+      actionView: 'escrow',
+    },
+    {
+      id: 'notif-2',
+      title: '🛡️ View Once DRM Shield Ready',
+      description: 'Single-view anti-screenshot protection configured. Buffer auto-purges on close.',
+      type: 'security',
+      timestamp: '2m ago',
+      read: false,
+      actionView: 'escrow',
+    },
+    {
+      id: 'notif-3',
+      title: '⚡ Global Hotkeys Active',
+      description: 'Press Ctrl+D for Post Deal, Ctrl+N for Notifications, or ? for shortcuts.',
+      type: 'info',
+      timestamp: '5m ago',
+      read: false,
+    },
+  ]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
+  const [isHotkeyCheatsheetOpen, setIsHotkeyCheatsheetOpen] = useState<boolean>(false);
+
   const [toastNotification, setToastNotification] = useState<{
     id: string;
     title: string;
     description: string;
-    type: 'info' | 'success' | 'alert' | 'escrow';
+    type: 'info' | 'success' | 'alert' | 'escrow' | 'security';
   } | null>(null);
 
   const showNotification = (notif: {
     title: string;
     description: string;
-    type?: 'info' | 'success' | 'alert' | 'escrow';
+    type?: 'info' | 'success' | 'alert' | 'escrow' | 'security';
+    actionView?: 'marketplace' | 'profile' | 'escrow';
   }) => {
     if (notif.type === 'alert') {
       soundEffects.playAlertWarningSound();
@@ -131,6 +174,18 @@ export default function App() {
       description: notif.description,
       type: notif.type || 'info',
     });
+    setNotifications((prev) => [
+      {
+        id: `notif-${Date.now()}`,
+        title: notif.title,
+        description: notif.description,
+        type: notif.type || 'info',
+        timestamp: 'Just now',
+        read: false,
+        actionView: notif.actionView,
+      },
+      ...prev,
+    ]);
   };
 
   useEffect(() => {
@@ -140,6 +195,143 @@ export default function App() {
     }, 4500);
     return () => clearTimeout(timer);
   }, [toastNotification]);
+
+  // Global Hotkey System using standard event listeners
+  // Handles: Post Deal (Ctrl+D), Open Notifications (Ctrl+N), Marketplace (Ctrl+M),
+  // Escrow (Ctrl+E), Profile (Ctrl+P), Why Verilance (Ctrl+W), Cheatsheet (?), Escape (Close)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+      const isMod = isMac ? e.metaKey : e.ctrlKey;
+      const key = e.key.toLowerCase();
+
+      // Check if target is currently an editable input or textarea
+      const target = e.target as HTMLElement | null;
+      const isInputFocused =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+
+      // 1. Post Deal: Ctrl+D or Cmd+D
+      if (isMod && key === 'd') {
+        e.preventDefault();
+        e.stopPropagation();
+        soundEffects.playTabClick();
+        setIsDealModalOpen(true);
+        showNotification({
+          title: '⚡ Hotkey Activated (Ctrl+D)',
+          description: 'Opened Escrow Deal Creator.',
+          type: 'info',
+        });
+        return;
+      }
+
+      // 2. Open Notifications: Ctrl+N or Cmd+N
+      if (isMod && key === 'n') {
+        e.preventDefault();
+        e.stopPropagation();
+        soundEffects.playNotificationSound();
+        setIsNotificationsOpen((prev) => !prev);
+        return;
+      }
+
+      // 3. Switch to Marketplace: Ctrl+M or Cmd+M
+      if (isMod && key === 'm') {
+        e.preventDefault();
+        e.stopPropagation();
+        soundEffects.playNavTabClick();
+        setCurrentView('marketplace');
+        return;
+      }
+
+      // 4. Switch to Escrow & Chat: Ctrl+E or Cmd+E
+      if (isMod && key === 'e') {
+        e.preventDefault();
+        e.stopPropagation();
+        soundEffects.playNavTabClick();
+        setCurrentView('escrow');
+        return;
+      }
+
+      // 5. Switch to Profile & KYC: Ctrl+P or Cmd+P
+      if (isMod && key === 'p') {
+        e.preventDefault();
+        e.stopPropagation();
+        soundEffects.playNavTabClick();
+        setCurrentView('profile');
+        return;
+      }
+
+      // 6. Why VERILANCE & Calculator: Ctrl+W or Ctrl+Y
+      if (isMod && (key === 'w' || key === 'y')) {
+        e.preventDefault();
+        e.stopPropagation();
+        soundEffects.playTabClick();
+        setIsWhyVerilanceOpen((prev) => !prev);
+        return;
+      }
+
+      // 7. Cheatsheet Help: ? key (when not typing in an input) or Ctrl+/
+      if ((e.key === '?' && !isInputFocused) || (isMod && e.key === '/')) {
+        e.preventDefault();
+        e.stopPropagation();
+        soundEffects.playTabClick();
+        setIsHotkeyCheatsheetOpen((prev) => !prev);
+        return;
+      }
+
+      // 8. Escape: Close any open dialog or slideover
+      if (e.key === 'Escape') {
+        setIsNotificationsOpen(false);
+        setIsHotkeyCheatsheetOpen(false);
+        setIsDealModalOpen(false);
+        setIsWhyVerilanceOpen(false);
+        setIsOnboardingOpen(false);
+        setIsRazorpayCheckoutOpen(false);
+        setIsMobileSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, []);
+
+  // Firebase Real-time Chat Messages Subscription
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    try {
+      const unsubscribe = subscribeMessages(null, (realtimeMsgs) => {
+        if (realtimeMsgs && realtimeMsgs.length > 0) {
+          setMessages(realtimeMsgs);
+        }
+      });
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('[App] Firestore realtime messages listener notice:', err);
+    }
+  }, [isAuthenticated]);
+
+  // Firebase Real-time Deals Subscription
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    try {
+      const unsubscribe = subscribeDeals((realtimeDeals) => {
+        if (realtimeDeals && realtimeDeals.length > 0) {
+          setActiveDeal((prev) => {
+            if (!prev) return realtimeDeals[realtimeDeals.length - 1];
+            const found = realtimeDeals.find((d) => d.id === prev.id);
+            return found || prev;
+          });
+        }
+      });
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('[App] Firestore realtime deals listener notice:', err);
+    }
+  }, [isAuthenticated]);
 
   // Sync real profile from Firestore on load & trigger full blank-slate wipe if uninitiated
   useEffect(() => {
@@ -242,8 +434,13 @@ export default function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'text',
       text,
+      createdAt: new Date().toISOString(),
+      channelId: activeChannel?.id || 'global',
     };
     setMessages((prev) => [...prev, newMsg]);
+    saveMessageToDB(newMsg, activeChannel?.id || 'global').catch((err) => {
+      console.warn('[App] Realtime message broadcast notice:', err);
+    });
   };
 
   const handleSendViewOnceMedia = (media: ViewOnceMedia, caption?: string) => {
@@ -255,12 +452,40 @@ export default function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'view_once',
       text: caption,
-      viewOnceMedia: media,
+      viewOnceMedia: {
+        ...media,
+        opened: false,
+        isExpired: false,
+      },
+      createdAt: new Date().toISOString(),
+      channelId: activeChannel?.id || 'global',
     };
     setMessages((prev) => [...prev, newMsg]);
+    saveMessageToDB(newMsg, activeChannel?.id || 'global').catch((err) => {
+      console.warn('[App] Realtime view once broadcast notice:', err);
+    });
+    showNotification({
+      title: '🔒 View Once Media Sent',
+      description: `Dispatched single-view protected attachment: "${media.title}". Destroys upon viewer close.`,
+      type: 'security',
+    });
   };
 
   const handleExpireViewOnceMedia = (mediaId: string) => {
+    // 1. Sync state to Firestore so recipient AND sender immediately see "opened: true" and locked "Opened" badge
+    const targetMsg = messages.find((m) => m.viewOnceMedia && m.viewOnceMedia.id === mediaId);
+    if (targetMsg) {
+      updateViewOnceMediaInDB(targetMsg.id, {
+        isExpired: true,
+        opened: true,
+        openedAt: new Date().toISOString(),
+        openedByUserId: currentUser.id,
+      }).catch((err) => {
+        console.warn('[App] Realtime expire sync notice:', err);
+      });
+    }
+
+    // 2. Update local state
     setMessages((prev) =>
       prev.map((msg) => {
         if (msg.viewOnceMedia && msg.viewOnceMedia.id === mediaId) {
@@ -269,13 +494,21 @@ export default function App() {
             viewOnceMedia: {
               ...msg.viewOnceMedia,
               isExpired: true,
-              url: '', // wipe raw media URL from state
+              opened: true,
+              url: '', // wipe raw media URL from memory
+              openedAt: new Date().toISOString(),
             },
           };
         }
         return msg;
       })
     );
+
+    showNotification({
+      title: '🔒 View Once Buffer Purged',
+      description: 'Single-use preview has been destroyed. Media locked with "Opened" status.',
+      type: 'info',
+    });
   };
 
   const handleToggleUserRole = () => {
@@ -331,6 +564,7 @@ export default function App() {
   const handleConfirmDeal = (deal: DealAgreement, triggerPaymentImmediately: boolean = true) => {
     setActiveDeal(deal);
     setWorkDelivery(null); // Reset delivery state for new deal
+    saveDealToDB(deal).catch((err) => console.warn('[App] Firestore deal save notice:', err));
 
     if (triggerPaymentImmediately) {
       setPendingFundingDeal(deal);
@@ -340,6 +574,7 @@ export default function App() {
         title: '📋 Escrow Contract Drafted',
         description: `Contract for ₹${deal.amount.toLocaleString('en-IN')} drafted. Ready for Razorpay escrow funding.`,
         type: 'info',
+        actionView: 'escrow',
       });
       const draftMsg: ChatMessage = {
         id: `sys-${Date.now()}`,
@@ -349,8 +584,11 @@ export default function App() {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         type: 'deal_invite',
         text: `📋 ESCROW AGREEMENT DRAFTED: ₹${deal.amount.toLocaleString('en-IN')} for ${deal.serviceType}. Awaiting escrow funding deposit.`,
+        createdAt: new Date().toISOString(),
+        channelId: activeChannel?.id || 'global',
       };
       setMessages((prev) => [...prev, draftMsg]);
+      saveMessageToDB(draftMsg, activeChannel?.id || 'global').catch(() => {});
     }
   };
 
@@ -358,7 +596,7 @@ export default function App() {
   const handleRazorpayPaymentSuccess = (result: RazorpayPaymentResult) => {
     setActiveDeal((prev) => {
       if (!prev) return null;
-      return {
+      const updated: DealAgreement = {
         ...prev,
         status: 'escrow_secured',
         paymentMethod: `Razorpay (${result.method})`,
@@ -367,18 +605,21 @@ export default function App() {
           {
             id: `h-pay-${Date.now()}`,
             title: `Funds Secured in Escrow 🔒 (ID: ${result.paymentId})`,
-            detail: `₹${result.amount.toLocaleString('en-IN')} authorized via Razorpay ${result.method}. VERILANCE 3% commission (₹${result.commissionFee}) reserved; ₹${result.netPayout.toLocaleString('en-IN')} escrow-locked for freelancer.`,
+            detail: `₹${result.amount.toLocaleString('en-IN')} authorized via Razorpay ${result.method}. VERILANCE 5% commission (₹${result.commissionFee}) reserved; ₹${result.netPayout.toLocaleString('en-IN')} escrow-locked for freelancer.`,
             timestamp: result.timestamp,
             type: 'secure',
           },
         ],
       };
+      saveDealToDB(updated).catch((err) => console.warn('[App] Firestore deal funding notice:', err));
+      return updated;
     });
 
     showNotification({
       title: '🔒 Razorpay Escrow Secured',
-      description: `₹${result.amount.toLocaleString('en-IN')} authorized & locked in Escrow. 3% platform commission allocated.`,
+      description: `₹${result.amount.toLocaleString('en-IN')} authorized & locked in Escrow. 5% platform commission allocated.`,
       type: 'escrow',
+      actionView: 'escrow',
     });
 
     const fundedMsg: ChatMessage = {
@@ -388,9 +629,12 @@ export default function App() {
       senderRole: 'system',
       timestamp: result.timestamp,
       type: 'deal_invite',
-      text: `🔒 ESCROW SECURED VIA RAZORPAY: ₹${result.amount.toLocaleString('en-IN')} authorized (Ref: ${result.paymentId}). VERILANCE 3% insurance fee (₹${result.commissionFee}) allocated. ₹${result.netPayout.toLocaleString('en-IN')} will disburse to Editor upon your watermarked proof approval.`,
+      text: `🔒 ESCROW SECURED VIA RAZORPAY: ₹${result.amount.toLocaleString('en-IN')} authorized (Ref: ${result.paymentId}). VERILANCE 5% insurance fee (₹${result.commissionFee}) allocated. ₹${result.netPayout.toLocaleString('en-IN')} will disburse to Editor upon your watermarked proof approval.`,
+      createdAt: new Date().toISOString(),
+      channelId: activeChannel?.id || 'global',
     };
     setMessages((prev) => [...prev, fundedMsg]);
+    saveMessageToDB(fundedMsg, activeChannel?.id || 'global').catch(() => {});
     setIsRazorpayCheckoutOpen(false);
     setPendingFundingDeal(null);
   };
@@ -419,26 +663,26 @@ export default function App() {
       title: '🎬 Watermarked Draft Submitted',
       description: 'Editor submitted 4K preview with diagonal security watermark.',
       type: 'success',
+      actionView: 'escrow',
     });
 
     if (activeDeal) {
-      setActiveDeal((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          status: 'work_submitted',
-          history: [
-            ...prev.history,
-            {
-              id: `h-submit-${Date.now()}`,
-              title: 'Watermarked Work Submitted 🎬',
-              detail: `Editor uploaded draft cut (1.42 GB) with diagonal watermark security. Mapped against ${targetDeadline}.`,
-              timestamp: 'Just now',
-              type: 'submitted',
-            },
-          ],
-        };
-      });
+      const updated: DealAgreement = {
+        ...activeDeal,
+        status: 'work_submitted',
+        history: [
+          ...activeDeal.history,
+          {
+            id: `h-submit-${Date.now()}`,
+            title: 'Watermarked Work Submitted 🎬',
+            detail: `Editor uploaded draft cut (1.42 GB) with diagonal watermark security. Mapped against ${targetDeadline}.`,
+            timestamp: 'Just now',
+            type: 'submitted',
+          },
+        ],
+      };
+      setActiveDeal(updated);
+      saveDealToDB(updated).catch((err) => console.warn('[App] Firestore work submission notice:', err));
     }
 
     // Add chat message
@@ -450,49 +694,46 @@ export default function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'text',
       text: '🎬 I have submitted the draft cut through Trustway Watermarked Delivery! You can review the full 10-minute preview. Click "Approve & Release Funds" to unlock the clean 4K export.',
+      createdAt: new Date().toISOString(),
+      channelId: activeChannel?.id || 'global',
     };
     setMessages((prev) => [...prev, workMsg]);
+    saveMessageToDB(workMsg, activeChannel?.id || 'global').catch(() => {});
   };
 
   // Approve & Release Funds (Client role)
   const handleApproveAndRelease = () => {
     if (!activeDeal) return;
 
-    // Check if the recipient / editor has completed KYC verification
-    // In VERILANCE, escrow payouts require KYC verification to be approved ('verified')
-    const isEditorKycVerified = currentUser.role === 'editor' 
-      ? currentUser.kycStatus === 'verified'
-      : true; // In bilateral scenario, ensure KYC status is verified
-
-    // If editor has not completed KYC, block escrow release
-    if (currentUser.role === 'editor' && currentUser.kycStatus !== 'verified') {
+    // Strict KYC Escrow Check: Restrict payout releases until status is 'verified'
+    if (currentUser.kycStatus !== 'verified') {
       showNotification({
         title: '⚠️ KYC Verification Required',
-        description: 'You must complete and get your KYC Verification approved in Profile Settings before escrow funds can be released to your bank account.',
+        description: 'Escrow payouts are restricted until your account KYC status is "Verified". Please complete ID & Bank verification in Settings.',
         type: 'alert',
+        actionView: 'profile',
       });
       soundEffects.playToggleSound();
       setCurrentView('profile');
       return;
     }
 
-    setActiveDeal((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        status: 'released',
-        history: [
-          ...prev.history,
-          {
-            id: `h-release-${Date.now()}`,
-            title: 'Funds Released & Transferred ⚡',
-            detail: `Authorized release. ₹${prev.netPayout.toLocaleString('en-IN')} disbursed to KYC-verified bank account. Watermark cleared.`,
-            timestamp: 'Just now',
-            type: 'released',
-          },
-        ],
-      };
-    });
+    const updated: DealAgreement = {
+      ...activeDeal,
+      status: 'released',
+      history: [
+        ...activeDeal.history,
+        {
+          id: `h-release-${Date.now()}`,
+          title: 'Funds Released & Transferred ⚡',
+          detail: `Authorized release. ₹${activeDeal.netPayout.toLocaleString('en-IN')} disbursed to KYC-verified bank account. Watermark cleared.`,
+          timestamp: 'Just now',
+          type: 'released',
+        },
+      ],
+    };
+    setActiveDeal(updated);
+    saveDealToDB(updated).catch((err) => console.warn('[App] Firestore release notice:', err));
 
     if (workDelivery) {
       setWorkDelivery((prev) => (prev ? { ...prev, isApproved: true, watermarked: false } : null));
@@ -533,31 +774,31 @@ export default function App() {
       title: `🚨 Dispute Opened (${caseId})`,
       description: 'Funds frozen in multi-sig vault. Trustway arbitrator reviewing evidence.',
       type: 'alert',
+      actionView: 'escrow',
     });
 
-    setActiveDeal((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        status: 'disputed',
-        dispute: {
-          caseId,
-          reason,
-          openedAt: new Date().toISOString(),
-          status: 'under_investigation',
+    const updated: DealAgreement = {
+      ...activeDeal,
+      status: 'disputed',
+      dispute: {
+        caseId,
+        reason,
+        openedAt: new Date().toISOString(),
+        status: 'under_investigation',
+      },
+      history: [
+        ...activeDeal.history,
+        {
+          id: `h-disp-${Date.now()}`,
+          title: 'Dispute Raised & Funds Frozen 🚨',
+          detail: `Case ${caseId} opened: "${reason}". Payouts suspended pending Trustway mediator arbitration.`,
+          timestamp: 'Just now',
+          type: 'disputed',
         },
-        history: [
-          ...prev.history,
-          {
-            id: `h-disp-${Date.now()}`,
-            title: 'Dispute Raised & Funds Frozen 🚨',
-            detail: `Case ${caseId} opened: "${reason}". Payouts suspended pending Trustway mediator arbitration.`,
-            timestamp: 'Just now',
-            type: 'disputed',
-          },
-        ],
-      };
-    });
+      ],
+    };
+    setActiveDeal(updated);
+    saveDealToDB(updated).catch((err) => console.warn('[App] Firestore dispute raise notice:', err));
 
     const dispMsg: ChatMessage = {
       id: `disp-msg-${Date.now()}`,
@@ -567,32 +808,34 @@ export default function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'vakra_alert',
       text: `🚨 ESCROW FROZEN: Case ${caseId} opened. Reason: "${reason}". Funds are securely locked in Trustway Multi-Sig while support investigates transcripts and delivery hashes.`,
+      createdAt: new Date().toISOString(),
+      channelId: activeChannel?.id || 'global',
     };
     setMessages((prev) => [...prev, dispMsg]);
+    saveMessageToDB(dispMsg, activeChannel?.id || 'global').catch(() => {});
   };
 
   // Resolve Dispute
   const handleResolveDispute = () => {
     if (!activeDeal) return;
 
-    setActiveDeal((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        status: workDelivery ? 'work_submitted' : 'escrow_secured',
-        dispute: undefined,
-        history: [
-          ...prev.history,
-          {
-            id: `h-res-${Date.now()}`,
-            title: 'Dispute Resolved & Unfrozen 🤝',
-            detail: 'Both parties agreed to terms. Normal escrow milestones restored.',
-            timestamp: 'Just now',
-            type: 'neutral',
-          },
-        ],
-      };
-    });
+    const updated: DealAgreement = {
+      ...activeDeal,
+      status: workDelivery ? 'work_submitted' : 'escrow_secured',
+      dispute: undefined,
+      history: [
+        ...activeDeal.history,
+        {
+          id: `h-res-${Date.now()}`,
+          title: 'Dispute Resolved & Unfrozen 🤝',
+          detail: 'Both parties agreed to terms. Normal escrow milestones restored.',
+          timestamp: 'Just now',
+          type: 'neutral',
+        },
+      ],
+    };
+    setActiveDeal(updated);
+    saveDealToDB(updated).catch((err) => console.warn('[App] Firestore dispute resolve notice:', err));
 
     const resMsg: ChatMessage = {
       id: `res-msg-${Date.now()}`,
@@ -602,8 +845,11 @@ export default function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'text',
       text: '🤝 Dispute unfreezed: Normal escrow protocol resumed. Freelancer and Client can proceed with revisions or release.',
+      createdAt: new Date().toISOString(),
+      channelId: activeChannel?.id || 'global',
     };
     setMessages((prev) => [...prev, resMsg]);
+    saveMessageToDB(resMsg, activeChannel?.id || 'global').catch(() => {});
   };
 
   // 1. MANDATORY AUTHENTICATION GUARD
@@ -639,11 +885,13 @@ export default function App() {
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                 : toastNotification.type === 'escrow'
                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                : toastNotification.type === 'security'
+                ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
                 : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
             }`}>
               {toastNotification.type === 'alert' ? (
                 <AlertCircle className="w-5 h-5" />
-              ) : toastNotification.type === 'success' ? (
+              ) : toastNotification.type === 'success' || toastNotification.type === 'security' ? (
                 <ShieldCheck className="w-5 h-5" />
               ) : toastNotification.type === 'escrow' ? (
                 <Lock className="w-5 h-5" />
@@ -749,12 +997,12 @@ export default function App() {
               setIsWhyVerilanceOpen(true);
             }}
             className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-cyan-400/90 hover:text-cyan-300 hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/30"
-            title="Explore Why VERILANCE, 3% Fee Calculator & Core USPs"
+            title="Explore Why VERILANCE, 5% Fee Calculator & Core USPs"
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             <span>Why VERILANCE</span>
             <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold">
-              3%
+              5%
             </span>
           </button>
         </div>
@@ -785,34 +1033,58 @@ export default function App() {
             </span>
           </button>
 
-          {/* Real-time Cyber Notification Bell */}
+          {/* Global Hotkeys Cheatsheet Button */}
+          <button
+            id="header-hotkeys-cheatsheet-btn"
+            onClick={() => {
+              soundEffects.playTabClick();
+              setIsHotkeyCheatsheetOpen(true);
+            }}
+            className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-cyan-300 transition flex items-center gap-1.5"
+            title="Keyboard Shortcuts Cheatsheet (Press ?)"
+          >
+            <Keyboard className="w-3.5 h-3.5" />
+            <kbd className="hidden lg:inline text-[10px] font-mono text-cyan-300/80 bg-white/10 px-1 py-0.2 rounded border border-white/10">
+              ?
+            </kbd>
+          </button>
+
+          {/* Real-time Cyber Notification Bell (Ctrl+N) */}
           <button
             id="header-notification-center-btn"
             onClick={() => {
-              showNotification({
-                title: '⚡ VERILANCE Cyber Sentinel',
-                description: '3% escrow multi-sig active. View Once 1-Time DRM protection loaded.',
-                type: 'info',
-              });
+              soundEffects.playNotificationSound();
+              setIsNotificationsOpen((prev) => !prev);
             }}
-            className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-cyan-300 transition relative"
-            title="VERILANCE Notifications (Click to trigger holographic chime)"
+            className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-cyan-300 transition relative flex items-center gap-1.5"
+            title="Open Notification Center (Ctrl+N)"
           >
-            <Bell className="w-3.5 h-3.5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-cyan-400 ring-2 ring-[#0a0d13] animate-pulse" />
+            <div className="relative">
+              <Bell className="w-3.5 h-3.5" />
+              {notifications.some((n) => !n.read) && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 ring-2 ring-[#0a0d13] animate-pulse" />
+              )}
+            </div>
+            <kbd className="hidden 2xl:inline text-[9px] font-mono text-cyan-400/80 bg-white/10 px-1.5 py-0.2 rounded border border-white/10">
+              Ctrl+N
+            </kbd>
           </button>
 
-          {/* Create Deal Quick Action Button */}
+          {/* Create Deal Quick Action Button (Ctrl+D) */}
           <button
             id="header-create-deal-btn"
             onClick={() => {
               soundEffects.playTabClick();
               setIsDealModalOpen(true);
             }}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 text-slate-950 font-bold text-xs transition shadow-md shadow-cyan-500/20"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 text-slate-950 font-bold text-xs transition shadow-md shadow-cyan-500/20 cursor-pointer"
+            title="Post New Deal / Escrow Contract (Ctrl+D)"
           >
             <Handshake className="w-3.5 h-3.5" />
             <span>Post Deal</span>
+            <kbd className="hidden lg:inline-block px-1.5 py-0.2 rounded bg-slate-950/25 text-slate-950 text-[9px] font-mono font-black border border-slate-950/20">
+              Ctrl+D
+            </kbd>
           </button>
 
           {/* Active Role Indicator & Switcher */}
@@ -1136,7 +1408,7 @@ export default function App() {
         />
       )}
 
-      {/* Why VERILANCE Interactive High-Impact Modal with 3% Calculator */}
+      {/* Why VERILANCE Interactive High-Impact Modal with 5% Calculator */}
       <WhyVerilanceModal
         isOpen={isWhyVerilanceOpen}
         onClose={() => setIsWhyVerilanceOpen(false)}
@@ -1147,6 +1419,40 @@ export default function App() {
         onOpenKyc={() => {
           setIsWhyVerilanceOpen(false);
           setCurrentView('profile');
+        }}
+      />
+
+      {/* Futuristic Cyberpunk Notification Center Slide-over Modal (Ctrl+N) */}
+      <NotificationCenterModal
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        notifications={notifications}
+        onClearAll={() => setNotifications([])}
+        onMarkAllAsRead={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
+        onSelectAction={(targetView) => {
+          setCurrentView(targetView);
+          setIsNotificationsOpen(false);
+        }}
+      />
+
+      {/* Global Hotkey Cheatsheet Modal (?) */}
+      <HotkeyCheatsheetModal
+        isOpen={isHotkeyCheatsheetOpen}
+        onClose={() => setIsHotkeyCheatsheetOpen(false)}
+        onTriggerAction={(actionId) => {
+          if (actionId === 'post_deal') {
+            setIsDealModalOpen(true);
+          } else if (actionId === 'notifications') {
+            setIsNotificationsOpen(true);
+          } else if (actionId === 'marketplace') {
+            setCurrentView('marketplace');
+          } else if (actionId === 'escrow') {
+            setCurrentView('escrow');
+          } else if (actionId === 'profile') {
+            setCurrentView('profile');
+          } else if (actionId === 'why_verilance') {
+            setIsWhyVerilanceOpen(true);
+          }
         }}
       />
 
@@ -1214,7 +1520,7 @@ export default function App() {
           title="Why VERILANCE"
         >
           <Sparkles className="w-4 h-4 mb-1" />
-          <span className="text-[10px] tracking-tight font-bold">Why 3%</span>
+          <span className="text-[10px] tracking-tight font-bold">Why 5%</span>
         </button>
 
         <button

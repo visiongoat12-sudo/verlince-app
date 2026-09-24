@@ -71,8 +71,9 @@ export const loadRazorpayScript = (): Promise<boolean> => {
 };
 
 export const getRazorpayKeyId = (): string => {
-  // Check standard environment variable keys
+  // Read Razorpay API Key from environment variables (NEXT_PUBLIC_RAZORPAY_KEY_ID prioritized)
+  const nextEnvKey = typeof process !== 'undefined' && process.env ? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID : undefined;
+  const metaNextKey = typeof import.meta !== 'undefined' && import.meta.env ? (import.meta.env.NEXT_PUBLIC_RAZORPAY_KEY_ID as string) : undefined;
   const viteKey = typeof import.meta !== 'undefined' && import.meta.env ? (import.meta.env.VITE_RAZORPAY_KEY_ID as string) : undefined;
-  const nextKey = typeof process !== 'undefined' && process.env ? (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID as string) : undefined;
-  return viteKey || nextKey || 'rzp_test_VerilanceEscrowDemoKey';
+  return nextEnvKey || metaNextKey || viteKey || 'rzp_test_VerilanceEscrowDemoKey';
 };

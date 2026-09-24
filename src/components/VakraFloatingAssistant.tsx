@@ -62,7 +62,7 @@ export const VakraFloatingAssistant: React.FC<VakraFloatingAssistantProps> = ({
     {
       id: 'vakra-welcome',
       sender: 'vakra',
-      text: "⚡ Greetings! I'm VAKRA AI, your autonomous cyber escrow sentinel. I assist with smart contract drafting, dispute mitigation, 3% escrow calculations, and scam threat detection. How can I protect your deal today?",
+      text: "⚡ Greetings! I'm VAKRA AI, your autonomous cyber escrow sentinel. I assist with smart contract drafting, dispute mitigation, 5% escrow calculations, and scam threat detection. How can I protect your deal today?",
       timestamp: 'Active Now',
     }
   ]);
@@ -246,7 +246,7 @@ export const VakraFloatingAssistant: React.FC<VakraFloatingAssistantProps> = ({
             config: {
               systemInstruction: `You are VAKRA AI, the authoritative cyber security and escrow AI assistant embedded in VERILANCE. 
 VERILANCE is an anti-scam freelance marketplace with:
-1) Strict 3% Escrow Commission (Client deposits ₹X into escrow; VERILANCE holds 3% as insurance fund; Editor receives 97% instantly upon approval). Supports Razorpay UPI, Stripe, PayPal.
+1) Strict 5% Escrow Commission (Client deposits ₹X into escrow; VERILANCE holds 5% as insurance fund; Editor receives 95% instantly upon approval). Supports Razorpay UPI, Cards, NetBanking.
 2) View Once 1-Time media cut proofs without any timers or timeline expiration: proofs remain shielded with DRM blur, anti-screenshot blackout on tab switch or window blur, and vanish permanently once closed.
 3) Watermarked delivery with diagonal preview safeguard until funds are approved.
 4) Anti-Scam Protocol: Flags off-platform contact (Telegram, WhatsApp, Direct UPI) as high risk.
@@ -266,7 +266,7 @@ Keep your answers razor-sharp, cyberpunk-themed, helpful, professional, and conc
       if (!aiResponseText) {
         if (isDraftRequest) {
           const dealBudget = customAmount || 5000;
-          const commission = Math.round(dealBudget * 0.03);
+          const commission = Math.round(dealBudget * 0.05);
           const net = dealBudget - commission;
           draftPayload = {
             serviceType: /reel|short|tiktok/i.test(query) ? 'Short-Form Reels / Shorts Viral Package' : 'YouTube 4K Long-Form Editing & Color Grade',
@@ -274,14 +274,14 @@ Keep your answers razor-sharp, cyberpunk-themed, helpful, professional, and conc
             deadline: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
             description: 'Dynamic pacing cut with SFX, motion typography, 2 revision passes, and diagonal preview safeguard.',
           };
-          aiResponseText = `🛡️ [VAKRA CONTRACT SYNTHESIZER]\nI have constructed a secure Smart Escrow Agreement for you:\n• Service: ${draftPayload.serviceType}\n• Total Escrow: ₹${dealBudget.toLocaleString('en-IN')}\n• VERILANCE 3% Escrow Fee: ₹${commission.toLocaleString('en-IN')}\n• Freelancer Payout (97%): ₹${net.toLocaleString('en-IN')}\n• Guardrails: Watermarked draft delivery + View Once preview proof.\n\nClick "Apply to Escrow Deal" below to populate the contract builder immediately.`;
+          aiResponseText = `🛡️ [VAKRA CONTRACT SYNTHESIZER]\nI have constructed a secure Smart Escrow Agreement for you:\n• Service: ${draftPayload.serviceType}\n• Total Escrow: ₹${dealBudget.toLocaleString('en-IN')}\n• VERILANCE 5% Escrow Fee: ₹${commission.toLocaleString('en-IN')}\n• Freelancer Payout (95%): ₹${net.toLocaleString('en-IN')}\n• Guardrails: Watermarked draft delivery + View Once preview proof.\n\nClick "Apply to Escrow Deal" below to populate the contract builder immediately.`;
         } else if (isCalculatorRequest || (isCommissionRequest && customAmount)) {
           const val = customAmount || 10000;
-          const fee = Math.round(val * 0.03);
+          const fee = Math.round(val * 0.05);
           const payout = val - fee;
-          aiResponseText = `💰 [VERILANCE 3% ESCROW CALCULATOR]\nFor a project budget of ₹${val.toLocaleString('en-IN')}:\n• Total Client Escrow Deposit: ₹${val.toLocaleString('en-IN')}\n• Platform Insurance Fee (3%): ₹${fee.toLocaleString('en-IN')}\n• Freelancer Net Payout (97%): ₹${payout.toLocaleString('en-IN')}\n\n* The 3% insurance fee covers multi-sig lock, encrypted DRM View Once buffering, and human mediator dispute arbitration.`;
+          aiResponseText = `💰 [VERILANCE 5% ESCROW CALCULATOR]\nFor a project budget of ₹${val.toLocaleString('en-IN')}:\n• Total Client Escrow Deposit: ₹${val.toLocaleString('en-IN')}\n• Platform Insurance Fee (5%): ₹${fee.toLocaleString('en-IN')}\n• Freelancer Net Payout (95%): ₹${payout.toLocaleString('en-IN')}\n\n* The 5% insurance fee covers multi-sig lock, encrypted DRM View Once buffering, and human mediator dispute arbitration.`;
         } else if (isCommissionRequest) {
-          aiResponseText = `⚡ [VERILANCE ESCROW PROTOCOL]\nOur platform operates on a transparent 3% Flat Insurance Commission:\n• Client deposits ₹10,000 into Escrow.\n• 3% Commission (₹300) guarantees fraud coverage, mediator dispute resolution, and encrypted DRM delivery.\n• Freelancer receives ₹9,700 (97%) direct to their bank via Razorpay Instant Payouts or Stripe upon client approval.\n• Zero hidden fees or withdrawal taxes.`;
+          aiResponseText = `⚡ [VERILANCE ESCROW PROTOCOL]\nOur platform operates on a transparent 5% Flat Insurance Commission:\n• Client deposits ₹10,000 into Escrow.\n• 5% Commission (₹500) guarantees fraud coverage, mediator dispute resolution, and encrypted DRM delivery.\n• Freelancer receives ₹9,500 (95%) direct to their bank via Razorpay Instant Payouts upon client approval.\n• Zero hidden fees or withdrawal taxes.`;
         } else if (isSupportRequest) {
           aiResponseText = `📞 [VERILANCE DISPUTE & ESCROW SUPPORT]\nNeed assistance? Here is our 24/7 priority protocol:\n• Live Arbitration: Click "Raise Dispute (Freeze Funds)" in the agreement sidebar to instantly lock escrow funds.\n• Official Support Desk: arbitration@verilance.io\n• Turnaround: Within 24 hours, a platform mediator reviews original timestamps, watermarked submissions, and chat logs.\n• Funds never leave the vault until fair delivery is confirmed.`;
         } else if (isDisputeRequest) {
@@ -290,7 +290,7 @@ Keep your answers razor-sharp, cyberpunk-themed, helpful, professional, and conc
         } else if (isViewOnceRequest) {
           aiResponseText = `🔒 [VIEW ONCE 1-TIME SECURITY]\nVERILANCE uses proprietary 1-Time Protected Previews with ZERO countdown timers:\n• The draft video or image can only be viewed in 1 continuous session.\n• If the user switches browser tabs, minimizes the window, or attempts screenshot capture, the screen immediately blacks out.\n• Once closed, the buffer is permanently purged from memory to prevent file theft before payment.`;
         } else {
-          aiResponseText = `🤖 [VAKRA SENTINEL RESPONSE]\nYour query is logged in VERILANCE Security node. Whether you are drafting milestone scopes, checking 3% escrow splits, verifying KYC badges, or shielding high-res renders, I am monitoring conversation parameters in real time. Never take payment off-platform!`;
+          aiResponseText = `🤖 [VAKRA SENTINEL RESPONSE]\nYour query is logged in VERILANCE Security node. Whether you are drafting milestone scopes, checking 5% escrow splits, verifying KYC badges, or shielding high-res renders, I am monitoring conversation parameters in real time. Never take payment off-platform!`;
         }
       }
 

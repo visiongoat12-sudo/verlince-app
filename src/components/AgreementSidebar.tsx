@@ -192,7 +192,7 @@ export const AgreementSidebar: React.FC<AgreementSidebarProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs text-cyan-400">
                 <span className="flex items-center gap-1">
-                  Trustway Commission (3% Fee):
+                  VERILANCE Escrow Fee (5%):
                   <HelpCircle className="w-3 h-3 text-cyan-400/70" />
                 </span>
                 <span className="font-semibold">-₹{deal.commissionFee.toLocaleString('en-IN')}</span>

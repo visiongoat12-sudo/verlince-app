@@ -755,14 +755,14 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                 Why 10,000+ Creators & VFX Editors Trust <span className="bg-gradient-to-r from-cyan-400 to-teal-300 bg-clip-text text-transparent">VERILANCE</span>
               </h2>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Traditional platforms take 20% of your earnings and leave you vulnerable to chargebacks or leaked preview files. VERILANCE combines <strong>3% micro-commissions</strong>, <strong>view-once anti-screen protection</strong>, and <strong>autonomous VAKRA AI dispute arbitration</strong>.
+                Other platforms take 10–20% of your earnings and leave you vulnerable to chargebacks or leaked preview files. VERILANCE combines <strong>5% micro-commissions</strong>, <strong>view-once anti-screen protection</strong>, and <strong>autonomous VAKRA AI dispute arbitration</strong>.
               </p>
 
               {/* USP mini pills */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
                 <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-center">
-                  <span className="block text-cyan-400 font-black text-sm font-mono">3% Fee</span>
-                  <span className="text-[10px] text-slate-400">vs 20% typical</span>
+                  <span className="block text-cyan-400 font-black text-sm font-mono">5% Fee</span>
+                  <span className="text-[10px] text-slate-400">vs 10-20% typical</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-center">
                   <span className="block text-teal-400 font-black text-sm font-mono">View Once</span>
@@ -789,7 +789,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                 className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:brightness-110 active:scale-98 text-slate-950 font-black text-xs sm:text-sm tracking-wide shadow-xl shadow-cyan-500/25 transition flex items-center justify-center gap-2 cursor-pointer group"
               >
                 <Sparkles className="w-4 h-4 text-slate-950 group-hover:rotate-12 transition-transform" />
-                <span>Explore Why VERILANCE & 3% Calculator</span>
+                <span>Explore Why VERILANCE & 5% Calculator</span>
                 <ArrowRight className="w-4 h-4 text-slate-950 group-hover:translate-x-1 transition-transform" />
               </button>
 

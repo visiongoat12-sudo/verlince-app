@@ -59,6 +59,36 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "creatorId", "clientId", "amount", "status"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Real-time chat messages including text, media, and view-once attachments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "type": { "type": "string" },
+        "channelId": { "type": "string" }
+      },
+      "required": ["id", "senderId", "senderName", "type"]
+    },
+    "Channel": {
+      "title": "Channel",
+      "description": "Chat conversations between users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "avatar": { "type": "string" },
+        "isGroup": { "type": "boolean" },
+        "lastActive": { "type": "string" }
+      },
+      "required": ["id", "name"]
     }
   },
   "firestore": {
@@ -73,6 +103,14 @@
     "/deals/{dealId}": {
       "schema": "Deal",
       "description": "Escrow contracts and agreements"
+    },
+    "/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Direct and deal chat messages"
+    },
+    "/channels/{channelId}": {
+      "schema": "Channel",
+      "description": "Chat conversation channels"
     }
   }
 }

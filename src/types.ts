@@ -96,6 +96,7 @@ export interface ViewOnceMedia {
   fileSize: string;
   durationSeconds?: number;
   isExpired: boolean;
+  opened?: boolean;
   openedAt?: string;
   openedByUserId?: string;
 }
@@ -118,6 +119,8 @@ export interface ChatMessage {
   };
   isWatermarkedPreview?: boolean;
   viewOnceMedia?: ViewOnceMedia;
+  channelId?: string;
+  createdAt?: string;
 }
 
 export interface Channel {

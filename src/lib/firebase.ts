@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { CreatorProfile, UserProfile, DealAgreement } from '../types';
+import { CreatorProfile, UserProfile, DealAgreement, ChatMessage, ViewOnceMedia, Channel } from '../types';
 
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -498,3 +498,130 @@ export async function saveDealToDB(deal: DealAgreement): Promise<void> {
     throw error;
   }
 }
+
+/**
+ * Real-time Chat Messaging: Broadcast message to Firebase Firestore
+ * When User A sends a message or attachment, broadcast it via Firebase so User B sees it on their screen instantly.
+ */
+export async function saveMessageToDB(message: ChatMessage, channelId?: string): Promise<void> {
+  try {
+    const msgId = message.id || `msg-${Date.now()}`;
+    const msgRef = doc(db, 'messages', msgId);
+    const cleanedMsg = cleanFirestoreData({
+      ...message,
+      id: msgId,
+      channelId: channelId || message.channelId || 'global',
+      createdAt: message.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    await setDoc(msgRef, cleanedMsg, { merge: true });
+    console.log(`[Firestore] Broadcasted message to real-time chat: ${msgId}`);
+  } catch (error) {
+    console.error('[Firestore] Error saving message:', error);
+    throw error;
+  }
+}
+
+/**
+ * Subscribe to real-time chat messages
+ */
+export function subscribeMessages(
+  channelId: string | null,
+  onUpdate: (messages: ChatMessage[]) => void
+): () => void {
+  const messagesRef = collection(db, 'messages');
+  return onSnapshot(
+    messagesRef,
+    (snapshot) => {
+      const msgs: ChatMessage[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as ChatMessage;
+        if (!channelId || !data.channelId || data.channelId === channelId || data.channelId === 'global') {
+          msgs.push({ ...data, id: d.id });
+        }
+      });
+      // Sort messages chronologically
+      msgs.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (parseInt(a.id.replace(/\D/g, ''), 10) || 0);
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (parseInt(b.id.replace(/\D/g, ''), 10) || 0);
+        return timeA - timeB;
+      });
+      onUpdate(msgs);
+    },
+    (err) => {
+      console.error('[Firestore] Realtime chat subscription error:', err);
+    }
+  );
+}
+
+/**
+ * Update View-Once Media state in Firestore
+ * When recipient opens and closes the media:
+ * - Update its Firestore document state to opened: true, isExpired: true
+ * - Immediately disable media and display locked "Opened" badge for both sender & receiver
+ */
+export async function updateViewOnceMediaInDB(
+  messageId: string,
+  updates: Partial<ViewOnceMedia>
+): Promise<void> {
+  try {
+    const msgRef = doc(db, 'messages', messageId);
+    const snap = await getDoc(msgRef);
+    if (snap.exists()) {
+      const currentData = snap.data() as ChatMessage;
+      const currentMedia = currentData.viewOnceMedia || ({} as ViewOnceMedia);
+      const updatedMedia: ViewOnceMedia = {
+        ...currentMedia,
+        ...updates,
+        opened: updates.opened !== undefined ? updates.opened : true,
+        isExpired: updates.isExpired !== undefined ? updates.isExpired : true,
+        url: '', // wipe raw media URL to prevent re-opening
+        openedAt: updates.openedAt || new Date().toISOString()
+      };
+      await setDoc(
+        msgRef,
+        {
+          viewOnceMedia: cleanFirestoreData(updatedMedia),
+          updatedAt: new Date().toISOString()
+        },
+        { merge: true }
+      );
+      console.log(`[Firestore] View-Once media synced to 'opened: true' for msg ${messageId}`);
+    }
+  } catch (error) {
+    console.error(`[Firestore] Error updating view-once media for ${messageId}:`, error);
+  }
+}
+
+/**
+ * Save chat channel to Firestore
+ */
+export async function saveChannelToDB(channel: Channel): Promise<void> {
+  try {
+    const chRef = doc(db, 'channels', channel.id);
+    await setDoc(chRef, cleanFirestoreData({ ...channel, updatedAt: new Date().toISOString() }), { merge: true });
+  } catch (error) {
+    console.error('[Firestore] Error saving channel:', error);
+  }
+}
+
+/**
+ * Subscribe to chat channels in Firestore
+ */
+export function subscribeChannels(onUpdate: (channels: Channel[]) => void): () => void {
+  const channelsRef = collection(db, 'channels');
+  return onSnapshot(
+    channelsRef,
+    (snapshot) => {
+      const chs: Channel[] = [];
+      snapshot.forEach((d) => {
+        chs.push({ id: d.id, ...d.data() } as Channel);
+      });
+      onUpdate(chs);
+    },
+    (err) => {
+      console.error('[Firestore] Channels subscription error:', err);
+    }
+  );
+}
+

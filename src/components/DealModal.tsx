@@ -70,7 +70,7 @@ export const DealModal: React.FC<DealModalProps> = ({
   if (!isOpen) return null;
 
   const parsedAmount = Math.max(0, parseFloat(amountRaw.replace(/[^0-9.]/g, '')) || 0);
-  const commissionFee = Math.round(parsedAmount * 0.03 * 100) / 100;
+  const commissionFee = Math.round(parsedAmount * 0.05 * 100) / 100;
   const netPayout = Math.max(0, parsedAmount - commissionFee);
 
   const createDealObject = (): DealAgreement => {
@@ -301,11 +301,11 @@ export const DealModal: React.FC<DealModalProps> = ({
                 <span className="text-sm font-bold text-white">₹{parsedAmount.toLocaleString('en-IN')}</span>
               </div>
               <div className="bg-[#12161f] p-2 rounded-lg border border-white/5">
-                <span className="text-[10px] text-cyan-400 block">3% VERILANCE Fee</span>
+                <span className="text-[10px] text-cyan-400 block">5% VERILANCE Fee</span>
                 <span className="text-sm font-bold text-cyan-400">₹{commissionFee.toLocaleString('en-IN')}</span>
               </div>
               <div className="bg-[#12161f] p-2 rounded-lg border border-white/5">
-                <span className="text-[10px] text-cyan-300 block">Net Payout to Editor</span>
+                <span className="text-[10px] text-cyan-300 block">Net Payout to Editor (95%)</span>
                 <span className="text-sm font-bold text-cyan-300">₹{netPayout.toLocaleString('en-IN')}</span>
               </div>
             </div>
@@ -315,7 +315,7 @@ export const DealModal: React.FC<DealModalProps> = ({
           <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-cyan-200 text-xs flex items-center gap-2.5">
             <Lock className="w-4 h-4 text-cyan-400 shrink-0" />
             <span className="font-bold tracking-wide">
-              🔒 Protected Payment (3% Fee Managed by VERILANCE)
+              🔒 Protected Payment (5% Fee Managed by VERILANCE)
             </span>
           </div>
 
