@@ -30,7 +30,8 @@ import {
   Building,
   RefreshCw,
   XCircle,
-  Eye
+  Eye,
+  Crown
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 import { subscribeDeals } from '../lib/firebase';
@@ -38,6 +39,8 @@ import { GalleryPermissionModal } from './GalleryPermissionModal';
 import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 import { DEFAULT_AVATARS, getAvatarUrl } from '../lib/defaultAvatars';
 import { soundEffects } from '../lib/soundEffects';
+import { AdminBadge } from './AdminBadge';
+import { isRootOwner, isUserAdmin } from '../lib/adminSecurity';
 
 interface TransactionItem {
   id: string;
@@ -56,6 +59,7 @@ interface ProfileVerificationDashboardProps {
   onOpenAuthGate?: () => void;
   onOpenEditModal?: () => void;
   onResetData?: () => void;
+  onOpenAdminPanel?: () => void;
 }
 
 export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboardProps> = ({
@@ -64,6 +68,7 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   onOpenAuthGate,
   onOpenEditModal,
   onResetData,
+  onOpenAdminPanel,
 }) => {
   // 1. HERO PROFILE STATE (Dynamic from real user)
   const [fullName, setFullName] = useState(currentUser?.name || '');
@@ -441,6 +446,9 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                   {fullName}
                 </h1>
 
+                {/* Authority Tier Badge distinguishing Root Owner from Delegated Admins */}
+                <AdminBadge user={currentUser} size="md" showDetails />
+
                 {/* Unique Profile Username Pill */}
                 <span className="px-2.5 py-0.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold flex items-center gap-1">
                   <span>@{username}</span>
@@ -541,8 +549,23 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
               </span>
             </div>
 
-            {/* Quick Interactive Role Toggle Button */}
-            <div className="flex items-center gap-2">
+            {/* Quick Interactive Role Toggle Button & Admin Access */}
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {(isRootOwner(currentUser?.email) || isUserAdmin(currentUser)) && onOpenAdminPanel && (
+                <button
+                  id="btn-open-admin-hud-profile"
+                  onClick={() => {
+                    soundEffects.playTabClick();
+                    onOpenAdminPanel();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-purple-500/20 to-cyan-500/20 hover:from-amber-500/30 hover:to-cyan-500/30 border border-amber-500/40 text-xs font-bold text-amber-200 transition flex items-center gap-1.5 shadow-md shadow-amber-500/10"
+                  title="Open Admin Delegation HUD & Role Controls"
+                >
+                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Admin HUD</span>
+                </button>
+              )}
+
               <button
                 id="btn-toggle-hero-role"
                 onClick={handleToggleRole}

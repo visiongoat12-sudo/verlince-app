@@ -11,6 +11,17 @@
         "email": { "type": "string", "format": "email" },
         "recoveryEmail": { "type": "string" },
         "role": { "type": "string", "enum": ["creator", "editor"] },
+        "isAdmin": { "type": "boolean" },
+        "isRootOwner": { "type": "boolean" },
+        "permissions": {
+          "type": "object",
+          "properties": {
+            "canManageAdmins": { "type": "boolean" },
+            "canManageKYC_Escrow": { "type": "boolean" },
+            "grantedAt": { "type": "string" },
+            "grantedBy": { "type": "string" }
+          }
+        },
         "avatar": { "type": "string" },
         "kycStatus": { "type": "string", "enum": ["unverified", "pending", "verified"] },
         "idDocumentName": { "type": "string" },

@@ -33,5 +33,10 @@ service cloud.firestore {
     match /messages/{messageId} {
       allow read, write: if true;
     }
+
+    // Security Audit Logs collection
+    match /audit_logs/{logId} {
+      allow read, write: if true;
+    }
   }
 }

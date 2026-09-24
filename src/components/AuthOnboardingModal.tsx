@@ -4,6 +4,7 @@ import { VerilanceLogo } from './VerilanceLogo';
 import { saveUserToDB, checkUsernameInDB, checkEmailInDB, fetchUserByEmailOrUsername } from '../lib/firebase';
 import { DEFAULT_AVATARS, getRandomDefaultAvatar, getAvatarUrl } from '../lib/defaultAvatars';
 import { recordRegisteredAccountLocally, isEmailRegisteredLocally, findLocalUserByEmailOrUsername } from '../lib/dataReset';
+import { isRootOwner } from '../lib/adminSecurity';
 import { GalleryPermissionModal } from './GalleryPermissionModal';
 import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 import { soundEffects } from '../lib/soundEffects';
@@ -446,20 +447,30 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
   };
 
   const completeAuthentication = (userObj: UserProfile) => {
+    const isRoot = isRootOwner(userObj.email);
+    const enrichedUser: UserProfile = {
+      ...userObj,
+      isRootOwner: isRoot ? true : !!userObj.isRootOwner,
+      isAdmin: isRoot ? true : !!userObj.isAdmin,
+      permissions: isRoot
+        ? { canManageAdmins: true, canManageKYC_Escrow: true, grantedAt: new Date().toISOString(), grantedBy: 'SYSTEM_ROOT' }
+        : userObj.permissions || { canManageAdmins: false, canManageKYC_Escrow: false }
+    };
+
     try {
-      localStorage.setItem('verilance_auth_user', JSON.stringify(userObj));
+      localStorage.setItem('verilance_auth_user', JSON.stringify(enrichedUser));
       localStorage.setItem('verilance_auth_completed', 'true');
-      recordRegisteredAccountLocally(userObj);
+      recordRegisteredAccountLocally(enrichedUser);
     } catch (e) {
       console.warn('Storage failed', e);
     }
     
     // Asynchronously persist to real live Firestore database
-    saveUserToDB(userObj).catch(err => {
+    saveUserToDB(enrichedUser).catch(err => {
       console.error('[Auth] Failed to sync user with Firestore database:', err);
     });
 
-    onAuthSuccess(userObj);
+    onAuthSuccess(enrichedUser);
   };
 
   return (

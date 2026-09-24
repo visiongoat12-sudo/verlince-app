@@ -22,6 +22,9 @@ import { RazorpaySecureCheckoutModal, RazorpayPaymentResult } from './components
 import { WhyVerilanceModal } from './components/WhyVerilanceModal';
 import { NotificationCenterModal, AppNotification } from './components/NotificationCenterModal';
 import { HotkeyCheatsheetModal } from './components/HotkeyCheatsheetModal';
+import { AdminDelegationPanel } from './components/AdminDelegationPanel';
+import { AdminBadge } from './components/AdminBadge';
+import { isRootOwner, isUserAdmin, canManageAdmins, canManageKYCEscrow, ROOT_OWNER_EMAIL } from './lib/adminSecurity';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -45,7 +48,8 @@ import {
   Trash2, 
   Volume2, 
   VolumeX,
-  Keyboard
+  Keyboard,
+  Crown
 } from 'lucide-react';
 import { 
   fetchUserFromDB, 
@@ -72,15 +76,27 @@ export default function App() {
   // Sound effects enabled toggle state
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => soundEffects.isEnabled());
 
-  // Navigation View State: 'marketplace' (Default Upwork-inspired layout) vs 'profile' vs 'escrow'
-  const [currentView, setCurrentView] = useState<'marketplace' | 'profile' | 'escrow'>('marketplace');
+  // Navigation View State: 'marketplace' vs 'profile' vs 'escrow' vs 'admin'
+  const [currentView, setCurrentView] = useState<'marketplace' | 'profile' | 'escrow' | 'admin'>('marketplace');
 
   // Authentication & Onboarding Gate State (Clean Slate: unauthenticated by default)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(initialAuth.isAuthenticated);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(initialAuth.isAuthModalOpen);
 
   // 1. Current User State (Zero balances, clean fields, no mock persona)
-  const [currentUser, setCurrentUser] = useState<UserProfile>(initialAuth.initialUser);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
+    const u = initialAuth.initialUser;
+    const isRoot = isRootOwner(u.email);
+    if (isRoot) {
+      return {
+        ...u,
+        isRootOwner: true,
+        isAdmin: true,
+        permissions: { canManageAdmins: true, canManageKYC_Escrow: true, grantedAt: new Date().toISOString(), grantedBy: 'SYSTEM_ROOT' }
+      };
+    }
+    return u;
+  });
 
   // 2. Modals State
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
@@ -161,7 +177,7 @@ export default function App() {
     title: string;
     description: string;
     type?: 'info' | 'success' | 'alert' | 'escrow' | 'security';
-    actionView?: 'marketplace' | 'profile' | 'escrow';
+    actionView?: 'marketplace' | 'profile' | 'escrow' | 'admin';
   }) => {
     if (notif.type === 'alert') {
       soundEffects.playAlertWarningSound();
@@ -263,7 +279,24 @@ export default function App() {
         return;
       }
 
-      // 6. Why VERILANCE & Calculator: Ctrl+W or Ctrl+Y
+      // 6. Admin HUD / Governance Matrix: Ctrl+A or Cmd+A (Root Owner / Authorized Admins)
+      if (isMod && key === 'a') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isRootOwner(currentUser.email) || isUserAdmin(currentUser)) {
+          soundEffects.playNavTabClick();
+          setCurrentView((prev) => (prev === 'admin' ? 'marketplace' : 'admin'));
+          showNotification({
+            title: '👑 Admin HUD Activated (Ctrl+A)',
+            description: 'Switched to Admin Role Delegation and Control HUD.',
+            type: 'info',
+            actionView: 'admin',
+          });
+        }
+        return;
+      }
+
+      // 7. Why VERILANCE & Calculator: Ctrl+W or Ctrl+Y
       if (isMod && (key === 'w' || key === 'y')) {
         e.preventDefault();
         e.stopPropagation();
@@ -374,11 +407,29 @@ export default function App() {
 
   // Auth Handlers
   const handleAuthSuccess = (authenticatedUser: UserProfile) => {
-    setCurrentUser(authenticatedUser);
+    const isRoot = isRootOwner(authenticatedUser.email);
+    const enrichedUser: UserProfile = {
+      ...authenticatedUser,
+      isRootOwner: isRoot ? true : !!authenticatedUser.isRootOwner,
+      isAdmin: isRoot ? true : !!authenticatedUser.isAdmin,
+      permissions: isRoot
+        ? { canManageAdmins: true, canManageKYC_Escrow: true, grantedAt: new Date().toISOString(), grantedBy: 'SYSTEM_ROOT' }
+        : authenticatedUser.permissions || { canManageAdmins: false, canManageKYC_Escrow: false },
+    };
+    setCurrentUser(enrichedUser);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
-    saveUserToDB(authenticatedUser).catch(err => {
+    saveUserToDB(enrichedUser).catch(err => {
       console.error('[App] Failed to save user on auth success:', err);
+    });
+
+    showNotification({
+      title: isRoot ? '👑 Welcome, Root Owner' : `Welcome, ${enrichedUser.name}`,
+      description: isRoot
+        ? 'Root owner verified (visiongoat12@gmail.com). Highest authority tier active.'
+        : `Authenticated as ${enrichedUser.role}. Escrow platform protection online.`,
+      type: isRoot ? 'security' : 'success',
+      actionView: isRoot ? 'admin' : 'marketplace',
     });
   };
 
@@ -1005,6 +1056,39 @@ export default function App() {
               5%
             </span>
           </button>
+
+          {/* Admin HUD Navigation Tab (Visible to Root Owner & Delegated Admins) */}
+          {(isRootOwner(currentUser.email) || isUserAdmin(currentUser)) && (
+            <button
+              id="nav-tab-admin-delegation-hud"
+              onClick={() => {
+                soundEffects.playNavTabClick();
+                setCurrentView('admin');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                currentView === 'admin'
+                  ? 'bg-gradient-to-r from-amber-500/25 via-purple-500/25 to-cyan-500/25 text-amber-200 border border-amber-500/50 shadow-md shadow-amber-500/10'
+                  : 'text-amber-400/90 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/20'
+              }`}
+              title="Admin Roles & Delegation Control Panel (Ctrl+A)"
+            >
+              {isRootOwner(currentUser.email) ? (
+                <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              ) : (
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              )}
+              <span>Admin HUD</span>
+              <span
+                className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-black ${
+                  isRootOwner(currentUser.email)
+                    ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30'
+                    : 'bg-cyan-400/20 text-cyan-300 border border-cyan-400/30'
+                }`}
+              >
+                {isRootOwner(currentUser.email) ? 'Root' : 'Admin'}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Center / Right Control Badges */}
@@ -1148,9 +1232,12 @@ export default function App() {
                     className="w-6 h-6 rounded-full object-cover ring-1 ring-cyan-500/40"
                   />
                   <div className="hidden md:flex flex-col text-left leading-none">
-                    <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
-                      {currentUser.name ? currentUser.name.split(' ')[0] : 'Member'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
+                        {currentUser.name ? currentUser.name.split(' ')[0] : 'Member'}
+                      </span>
+                      <AdminBadge user={currentUser} size="sm" />
+                    </div>
                     <span className="text-[10px] text-cyan-400/80 font-mono">
                       @{currentUser.username || 'user'}
                     </span>
@@ -1246,6 +1333,15 @@ export default function App() {
             onOpenAuthGate={handleSignOut}
             onOpenEditModal={() => setIsOnboardingOpen(true)}
             onResetData={handleResetAppData}
+            onOpenAdminPanel={() => setCurrentView('admin')}
+          />
+        </main>
+      ) : currentView === 'admin' ? (
+        /* MULTI-TIERED ADMIN DELEGATION & CONTROL HUD */
+        <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10] pb-20 md:pb-0">
+          <AdminDelegationPanel
+            currentUser={currentUser}
+            onClose={() => setCurrentView('marketplace')}
           />
         </main>
       ) : (
@@ -1450,6 +1546,8 @@ export default function App() {
             setCurrentView('escrow');
           } else if (actionId === 'profile') {
             setCurrentView('profile');
+          } else if (actionId === 'admin') {
+            setCurrentView('admin');
           } else if (actionId === 'why_verilance') {
             setIsWhyVerilanceOpen(true);
           }
@@ -1509,6 +1607,24 @@ export default function App() {
           </div>
           <span className="text-[10px] tracking-tight font-bold">Post Deal</span>
         </button>
+
+        {(isRootOwner(currentUser.email) || isUserAdmin(currentUser)) && (
+          <button
+            id="mobile-nav-admin"
+            onClick={() => {
+              soundEffects.playNavTabClick();
+              setCurrentView('admin');
+            }}
+            className={`flex-1 py-1.5 px-1 flex flex-col items-center justify-center min-h-[44px] rounded-xl transition ${
+              currentView === 'admin'
+                ? 'text-amber-300 bg-amber-500/10 font-bold'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Crown className="w-4 h-4 mb-1 text-amber-400" />
+            <span className="text-[10px] tracking-tight">Admin</span>
+          </button>
+        )}
 
         <button
           id="mobile-nav-why-verilance"

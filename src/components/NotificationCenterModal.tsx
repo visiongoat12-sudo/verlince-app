@@ -23,7 +23,7 @@ export interface AppNotification {
   type: 'info' | 'success' | 'alert' | 'escrow' | 'security';
   timestamp: string;
   read: boolean;
-  actionView?: 'marketplace' | 'profile' | 'escrow';
+  actionView?: 'marketplace' | 'profile' | 'escrow' | 'admin';
 }
 
 interface NotificationCenterModalProps {
@@ -32,7 +32,7 @@ interface NotificationCenterModalProps {
   notifications: AppNotification[];
   onClearAll: () => void;
   onMarkAllAsRead: () => void;
-  onSelectAction?: (view: 'marketplace' | 'profile' | 'escrow') => void;
+  onSelectAction?: (view: 'marketplace' | 'profile' | 'escrow' | 'admin') => void;
 }
 
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({

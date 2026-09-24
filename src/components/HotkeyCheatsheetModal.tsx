@@ -9,7 +9,8 @@ import {
   Store, 
   MessageSquare, 
   User, 
-  Zap 
+  Zap,
+  Crown 
 } from 'lucide-react';
 import { soundEffects } from '../lib/soundEffects';
 
@@ -74,6 +75,15 @@ export const HotkeyCheatsheetModal: React.FC<HotkeyCheatsheetModalProps> = ({
       actionId: 'profile',
       color: 'text-purple-400',
       bg: 'bg-purple-500/10 border-purple-500/30',
+    },
+    {
+      action: 'Admin Delegation HUD',
+      keyCombo: `${modKey} + A`,
+      description: 'Toggle Multi-Tiered Admin Panel & Role Delegation matrix (Root/Admins)',
+      icon: Crown,
+      actionId: 'admin',
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10 border-amber-500/30',
     },
     {
       action: 'Why VERILANCE & Calculator',

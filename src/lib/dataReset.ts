@@ -1,6 +1,7 @@
 import { UserProfile } from '../types';
 import { wipeFirestoreDatabase } from './firebase';
 import { DEFAULT_AVATARS, getRandomDefaultAvatar } from './defaultAvatars';
+import { isRootOwner } from './adminSecurity';
 
 export const CLEAN_SLATE_USER: UserProfile = {
   id: '',
@@ -93,8 +94,18 @@ export function initializeCleanSlateAuth(): {
       }
 
       // Valid freshly registered non-demo user
+      const isRoot = isRootOwner(parsed.email);
+      const enrichedUser: UserProfile = {
+        ...parsed,
+        isRootOwner: isRoot ? true : !!parsed.isRootOwner,
+        isAdmin: isRoot ? true : !!parsed.isAdmin,
+        permissions: isRoot
+          ? { canManageAdmins: true, canManageKYC_Escrow: true, grantedAt: new Date().toISOString(), grantedBy: 'SYSTEM_ROOT' }
+          : parsed.permissions || { canManageAdmins: false, canManageKYC_Escrow: false }
+      };
+
       return {
-        initialUser: parsed,
+        initialUser: enrichedUser,
         isAuthenticated: true,
         isAuthModalOpen: false,
       };

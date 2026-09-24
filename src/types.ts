@@ -1,5 +1,24 @@
 export type UserRole = 'creator' | 'editor';
 
+export interface AdminPermissions {
+  canManageAdmins: boolean;
+  canManageKYC_Escrow: boolean;
+  grantedAt?: string;
+  grantedBy?: string;
+}
+
+export interface AdminAuditLog {
+  id: string;
+  action: 'promote_admin' | 'revoke_admin' | 'update_permissions' | 'kyc_approved' | 'kyc_rejected' | 'escrow_override';
+  actorEmail: string;
+  actorName: string;
+  targetUserId: string;
+  targetUserEmail: string;
+  targetUserName?: string;
+  details: string;
+  timestamp: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -7,6 +26,9 @@ export interface UserProfile {
   email: string;
   recoveryEmail?: string;
   role: UserRole;
+  isAdmin?: boolean;
+  isRootOwner?: boolean;
+  permissions?: AdminPermissions;
   idDocumentName: string | null;
   hasVerifiedBadge: boolean;
   badgePurchasedAt?: string;

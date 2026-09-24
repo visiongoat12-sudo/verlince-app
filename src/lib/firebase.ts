@@ -14,7 +14,8 @@ import {
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { CreatorProfile, UserProfile, DealAgreement, ChatMessage, ViewOnceMedia, Channel } from '../types';
+import { CreatorProfile, UserProfile, DealAgreement, ChatMessage, ViewOnceMedia, Channel, AdminPermissions, AdminAuditLog } from '../types';
+import { ROOT_OWNER_EMAIL, isRootOwner } from './adminSecurity';
 
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -256,10 +257,28 @@ export function subscribeUser(userId: string, onUpdate: (user: UserProfile | nul
 export async function saveUserToDB(user: UserProfile): Promise<void> {
   try {
     const userRef = doc(db, 'users', user.id);
+    const normalizedEmail = user.email ? user.email.trim().toLowerCase() : '';
+    const isRoot = isRootOwner(normalizedEmail);
+
+    const permissions: AdminPermissions = isRoot
+      ? {
+          canManageAdmins: true,
+          canManageKYC_Escrow: true,
+          grantedAt: user.permissions?.grantedAt || new Date().toISOString(),
+          grantedBy: 'SYSTEM_ROOT'
+        }
+      : user.permissions || {
+          canManageAdmins: false,
+          canManageKYC_Escrow: false
+        };
+
     const cleanedUserData = cleanFirestoreData({
       ...user,
-      email: user.email ? user.email.trim().toLowerCase() : '',
+      email: normalizedEmail,
       username: user.username ? user.username.trim().toLowerCase() : '',
+      isAdmin: isRoot ? true : !!user.isAdmin,
+      isRootOwner: isRoot ? true : !!user.isRootOwner,
+      permissions: permissions,
       updatedAt: new Date().toISOString()
     });
     await setDoc(userRef, cleanedUserData, { merge: true });
@@ -606,22 +625,275 @@ export async function saveChannelToDB(channel: Channel): Promise<void> {
 }
 
 /**
- * Subscribe to chat channels in Firestore
+ * Fetch all registered users from Firestore for Admin Control Panel
  */
-export function subscribeChannels(onUpdate: (channels: Channel[]) => void): () => void {
-  const channelsRef = collection(db, 'channels');
-  return onSnapshot(
-    channelsRef,
-    (snapshot) => {
-      const chs: Channel[] = [];
-      snapshot.forEach((d) => {
-        chs.push({ id: d.id, ...d.data() } as Channel);
+export async function fetchAllUsersFromDB(): Promise<UserProfile[]> {
+  try {
+    const usersRef = collection(db, 'users');
+    const snapshot = await getDocs(usersRef);
+    const users: UserProfile[] = [];
+    snapshot.forEach((d) => {
+      const data = d.data() as UserProfile;
+      const isRoot = isRootOwner(data.email);
+      users.push({
+        ...data,
+        id: d.id,
+        isRootOwner: isRoot ? true : !!data.isRootOwner,
+        isAdmin: isRoot ? true : !!data.isAdmin,
+        permissions: isRoot
+          ? { canManageAdmins: true, canManageKYC_Escrow: true }
+          : data.permissions || { canManageAdmins: false, canManageKYC_Escrow: false },
       });
-      onUpdate(chs);
+    });
+    return users;
+  } catch (error) {
+    console.error('[Firestore] Error fetching all users:', error);
+    return [];
+  }
+}
+
+/**
+ * Real-time subscription to all registered users for Admin Control Panel
+ */
+export function subscribeAllUsers(onUpdate: (users: UserProfile[]) => void): () => void {
+  const usersRef = collection(db, 'users');
+  return onSnapshot(
+    usersRef,
+    (snapshot) => {
+      const users: UserProfile[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as UserProfile;
+        const isRoot = isRootOwner(data.email);
+        users.push({
+          ...data,
+          id: d.id,
+          isRootOwner: isRoot ? true : !!data.isRootOwner,
+          isAdmin: isRoot ? true : !!data.isAdmin,
+          permissions: isRoot
+            ? { canManageAdmins: true, canManageKYC_Escrow: true }
+            : data.permissions || { canManageAdmins: false, canManageKYC_Escrow: false },
+        });
+      });
+      onUpdate(users);
     },
     (err) => {
-      console.error('[Firestore] Channels subscription error:', err);
+      console.error('[Firestore] Real-time users listener error:', err);
     }
   );
 }
+
+/**
+ * Save an audit log entry to Firestore
+ */
+export async function saveAuditLogInDB(log: AdminAuditLog): Promise<void> {
+  try {
+    const logId = log.id || `audit-${Date.now()}`;
+    const logRef = doc(db, 'audit_logs', logId);
+    await setDoc(logRef, cleanFirestoreData({ ...log, id: logId, timestamp: log.timestamp || new Date().toISOString() }));
+    console.log(`[Firestore] Audit log recorded: ${log.action} on ${log.targetUserEmail}`);
+  } catch (error) {
+    console.error('[Firestore] Error recording audit log:', error);
+  }
+}
+
+/**
+ * Subscribe to Admin Audit Logs
+ */
+export function subscribeAuditLogs(onUpdate: (logs: AdminAuditLog[]) => void): () => void {
+  const auditRef = collection(db, 'audit_logs');
+  return onSnapshot(
+    auditRef,
+    (snapshot) => {
+      const logs: AdminAuditLog[] = [];
+      snapshot.forEach((d) => {
+        logs.push({ id: d.id, ...d.data() } as AdminAuditLog);
+      });
+      // Sort newest first
+      logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      onUpdate(logs);
+    },
+    (err) => {
+      console.error('[Firestore] Audit log subscription error:', err);
+    }
+  );
+}
+
+/**
+ * Update Admin Permissions for a user:
+ * Stores `isAdmin: true` and `permissions: { canManageAdmins, canManageKYC_Escrow }` in Firestore `users/{uid}/permissions`
+ */
+export async function updateUserPermissionsInDB(
+  targetUserId: string,
+  updates: {
+    isAdmin: boolean;
+    permissions: AdminPermissions;
+    updatedByEmail: string;
+    updatedByName?: string;
+    targetUserEmail?: string;
+    targetUserName?: string;
+  }
+): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', targetUserId);
+    const snap = await getDoc(userRef);
+
+    if (!snap.exists()) {
+      throw new Error(`User ${targetUserId} not found`);
+    }
+
+    const userData = snap.data() as UserProfile;
+    // Security check: cannot modify Root Owner permissions
+    if (isRootOwner(userData.email)) {
+      throw new Error('Permission denied: The Root Owner possesses immutable tier-0 authority.');
+    }
+
+    const updatedPermissions: AdminPermissions = {
+      canManageAdmins: !!updates.permissions.canManageAdmins,
+      canManageKYC_Escrow: !!updates.permissions.canManageKYC_Escrow,
+      grantedAt: new Date().toISOString(),
+      grantedBy: updates.updatedByEmail,
+    };
+
+    await setDoc(
+      userRef,
+      cleanFirestoreData({
+        isAdmin: updates.isAdmin,
+        permissions: updatedPermissions,
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+
+    // Record audit log
+    await saveAuditLogInDB({
+      id: `audit-${Date.now()}`,
+      action: updates.isAdmin ? 'promote_admin' : 'revoke_admin',
+      actorEmail: updates.updatedByEmail,
+      actorName: updates.updatedByName || 'Admin',
+      targetUserId,
+      targetUserEmail: updates.targetUserEmail || userData.email || '',
+      targetUserName: updates.targetUserName || userData.name,
+      details: updates.isAdmin
+        ? `Delegated Admin permissions updated: canManageAdmins=${updatedPermissions.canManageAdmins}, canManageKYC_Escrow=${updatedPermissions.canManageKYC_Escrow}`
+        : 'Admin access demoted/revoked',
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log(`[Firestore] Updated permissions for user ${targetUserId}:`, updatedPermissions);
+  } catch (error) {
+    console.error(`[Firestore] Error updating permissions for ${targetUserId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * 1-Click Revoke Admin Access for Root Owner:
+ * Immediately demotes a delegated admin back to a standard user
+ */
+export async function revokeAdminAccessInDB(
+  targetUserId: string,
+  revokedByEmail: string,
+  revokedByName?: string
+): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', targetUserId);
+    const snap = await getDoc(userRef);
+
+    if (!snap.exists()) {
+      throw new Error(`User ${targetUserId} not found`);
+    }
+
+    const userData = snap.data() as UserProfile;
+    if (isRootOwner(userData.email)) {
+      throw new Error('Security violation: The Root Owner cannot be revoked.');
+    }
+
+    await setDoc(
+      userRef,
+      cleanFirestoreData({
+        isAdmin: false,
+        permissions: {
+          canManageAdmins: false,
+          canManageKYC_Escrow: false,
+          grantedAt: undefined,
+          grantedBy: undefined,
+        },
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+
+    // Record audit log
+    await saveAuditLogInDB({
+      id: `audit-${Date.now()}`,
+      action: 'revoke_admin',
+      actorEmail: revokedByEmail,
+      actorName: revokedByName || 'Root Owner',
+      targetUserId,
+      targetUserEmail: userData.email || '',
+      targetUserName: userData.name,
+      details: `1-Click Revocation: Demoted delegated admin ${userData.name} (@${userData.username || 'user'}) back to standard role.`,
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log(`[Firestore] Successfully revoked admin access for user: ${targetUserId}`);
+  } catch (error) {
+    console.error(`[Firestore] Error revoking admin access for ${targetUserId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Update KYC status from Admin HUD (Approval / Rejection)
+ */
+export async function updateUserKycStatusInDB(
+  targetUserId: string,
+  status: 'verified' | 'rejected' | 'pending',
+  reviewerEmail: string,
+  reviewerName?: string,
+  rejectionReason?: string
+): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', targetUserId);
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) return;
+
+    const currentData = snap.data() as UserProfile;
+    const currentKycData = currentData.kycData || {};
+
+    await setDoc(
+      userRef,
+      cleanFirestoreData({
+        kycStatus: status,
+        hasVerifiedBadge: status === 'verified',
+        kycData: {
+          ...currentKycData,
+          reviewedAt: new Date().toISOString(),
+          rejectionReason: rejectionReason || undefined,
+        },
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+
+    // Record audit log
+    await saveAuditLogInDB({
+      id: `audit-${Date.now()}`,
+      action: status === 'verified' ? 'kyc_approved' : 'kyc_rejected',
+      actorEmail: reviewerEmail,
+      actorName: reviewerName || 'Admin Reviewer',
+      targetUserId,
+      targetUserEmail: currentData.email || '',
+      targetUserName: currentData.name,
+      details: `KYC submission marked as ${status.toUpperCase()}${rejectionReason ? `: ${rejectionReason}` : ''}`,
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log(`[Firestore] Updated KYC status for user ${targetUserId} to ${status}`);
+  } catch (error) {
+    console.error(`[Firestore] Error updating KYC status for ${targetUserId}:`, error);
+    throw error;
+  }
+}
+
 
