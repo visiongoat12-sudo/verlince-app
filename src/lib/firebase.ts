@@ -15,7 +15,7 @@ import {
 import { getAuth } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { CreatorProfile, UserProfile, DealAgreement, ChatMessage, ViewOnceMedia, Channel, AdminPermissions, AdminAuditLog } from '../types';
-import { ROOT_OWNER_EMAIL, isRootOwner } from './adminSecurity';
+import { ROOT_OWNER_EMAIL, isRootOwner, canActorModifyTargetAdmin, canActorRevokeTargetAdmin } from './adminSecurity';
 
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -742,9 +742,16 @@ export async function updateUserPermissionsInDB(
     }
 
     const userData = snap.data() as UserProfile;
-    // Security check: cannot modify Root Owner permissions
-    if (isRootOwner(userData.email)) {
-      throw new Error('Permission denied: The Root Owner possesses immutable tier-0 authority.');
+
+    // Strict Security Validation via Rule Engine
+    const actorProfile: Partial<UserProfile> = {
+      email: updates.updatedByEmail,
+      name: updates.updatedByName,
+    };
+
+    const check = canActorModifyTargetAdmin(actorProfile, userData);
+    if (!check.allowed) {
+      throw new Error(check.reason || 'Permission denied: Action blocked by security hierarchy.');
     }
 
     const updatedPermissions: AdminPermissions = {

@@ -8,6 +8,7 @@ import { isRootOwner } from '../lib/adminSecurity';
 import { GalleryPermissionModal } from './GalleryPermissionModal';
 import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 import { soundEffects } from '../lib/soundEffects';
+import { EditingAppsSelector } from './EditingAppsSelector';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -81,6 +82,11 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
   const [usernameFeedback, setUsernameFeedback] = useState<string>('');
   const [suggestedUsernames, setSuggestedUsernames] = useState<string[]>([]);
   const [role, setRole] = useState<UserRole>(currentUser?.role || 'editor');
+  const [editingApps, setEditingApps] = useState<string[]>(
+    currentUser?.editingApps && currentUser.editingApps.length > 0
+      ? currentUser.editingApps
+      : ['Adobe Premiere Pro', 'Adobe After Effects', 'DaVinci Resolve']
+  );
 
   // Minimal Dark-Aesthetic Eye Avatar Selection (Randomly assigned or chosen by user)
   const [selectedAvatarId, setSelectedAvatarId] = useState<string>(() => getRandomDefaultAvatar().id);
@@ -436,6 +442,8 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
       email: cleanEmail,
       recoveryEmail: recoveryEmail.trim() || email,      
       role: role,
+      editingApps: role === 'editor' ? editingApps : undefined,
+      createdAt: new Date().toISOString(),
       idDocumentName: idDocName || null,
       hasVerifiedBadge: wantsVerifiedBadge,
       badgePurchasedAt: wantsVerifiedBadge ? todayStr : undefined,
@@ -878,6 +886,29 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                   </div>
                 </button>
               </div>
+
+              {/* Editing Software Suite (Shown ONLY if role is editor) */}
+              {role === 'editor' && (
+                <div className="mt-3 p-3.5 rounded-xl bg-[#141822] border border-teal-500/30 space-y-2 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-teal-300 flex items-center gap-1.5 font-bold">
+                      <Film className="w-3.5 h-3.5 text-teal-400" />
+                      <span>What Editing App(s) Do You Use?</span>
+                    </label>
+                    <span className="text-[10px] font-mono text-teal-400 font-bold px-2 py-0.5 rounded bg-teal-500/10 border border-teal-500/20 uppercase">
+                      Editor Tooling
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Select the editing software you use (Premiere Pro, DaVinci Resolve, CapCut, etc.).
+                  </p>
+                  <EditingAppsSelector
+                    selectedApps={editingApps}
+                    onChange={setEditingApps}
+                    readOnly={false}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Default Avatar Selection (Minimal Dark Aesthetic with White Stylized Eyes) */}

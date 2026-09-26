@@ -5,6 +5,7 @@ import { isMobileDevice, hasGalleryAccess } from '../lib/galleryPermission';
 import { checkEmailInDB } from '../lib/firebase';
 import { DEFAULT_AVATARS, getAvatarUrl } from '../lib/defaultAvatars';
 import { soundEffects } from '../lib/soundEffects';
+import { EditingAppsSelector } from './EditingAppsSelector';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -56,6 +57,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [usernameFeedback, setUsernameFeedback] = useState('');
   const [suggestedUsernames, setSuggestedUsernames] = useState<string[]>([]);
   const [role, setRole] = useState<UserRole>(user.role);
+  const [editingApps, setEditingApps] = useState<string[]>(
+    user.editingApps && user.editingApps.length > 0
+      ? user.editingApps
+      : ['Adobe Premiere Pro', 'Adobe After Effects', 'DaVinci Resolve']
+  );
   const [idDocName, setIdDocName] = useState<string | null>(user.idDocumentName || null);
   const [isUploading, setIsUploading] = useState(false);
   const [hasPurchasedBadge, setHasPurchasedBadge] = useState(user.hasVerifiedBadge);
@@ -185,6 +191,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       email: cleanEmail,
       recoveryEmail: recoveryEmail.trim() || undefined,
       role,
+      editingApps: role === 'editor' ? editingApps : undefined,
       avatar: avatarUrl,
       idDocumentName: idDocName,
       hasVerifiedBadge: hasPurchasedBadge,
@@ -485,6 +492,29 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Editing Software Suite (Shown ONLY if role is editor) */}
+          {role === 'editor' && (
+            <div className="p-4 rounded-xl bg-[#141822] border border-teal-500/30 space-y-2.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-teal-300 flex items-center gap-1.5 font-bold">
+                  <Film className="w-3.5 h-3.5 text-teal-400" />
+                  <span>What Editing App(s) Do You Use?</span>
+                </label>
+                <span className="text-[10px] font-mono text-teal-400 font-bold px-2 py-0.5 rounded bg-teal-500/10 border border-teal-500/20 uppercase">
+                  Editor Tooling
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Select or specify the video editing software you use (displayed on your verified profile).
+              </p>
+              <EditingAppsSelector
+                selectedApps={editingApps}
+                onChange={setEditingApps}
+                readOnly={false}
+              />
+            </div>
+          )}
 
           {/* Government ID Upload */}
           <div>

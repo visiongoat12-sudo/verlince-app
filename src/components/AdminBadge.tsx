@@ -4,7 +4,14 @@ import { UserProfile } from '../types';
 import { isRootOwner, getAdminTier } from '../lib/adminSecurity';
 
 interface AdminBadgeProps {
-  user?: Partial<UserProfile> | null;
+  user?: {
+    email?: string | null;
+    isAdmin?: boolean;
+    isRootOwner?: boolean;
+    role?: any;
+    permissions?: any;
+    [key: string]: any;
+  } | null;
   size?: 'sm' | 'md' | 'lg';
   showDetails?: boolean;
   className?: string;

@@ -31,7 +31,9 @@ import {
   RefreshCw,
   XCircle,
   Eye,
-  Crown
+  Crown,
+  Film,
+  Sliders
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 import { subscribeDeals } from '../lib/firebase';
@@ -41,6 +43,8 @@ import { DEFAULT_AVATARS, getAvatarUrl } from '../lib/defaultAvatars';
 import { soundEffects } from '../lib/soundEffects';
 import { AdminBadge } from './AdminBadge';
 import { isRootOwner, isUserAdmin } from '../lib/adminSecurity';
+import { EditingAppsSelector } from './EditingAppsSelector';
+import { getGracePeriodInfo, setSimulatedDayOverride, GRACE_PERIOD_DAYS } from '../lib/kycGracePeriod';
 
 interface TransactionItem {
   id: string;
@@ -76,10 +80,22 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   const [email, setEmail] = useState(currentUser?.email || '');
   const [recoveryEmail, setRecoveryEmail] = useState(currentUser?.recoveryEmail || '');
   const [role, setRole] = useState<UserRole>(currentUser?.role || 'editor'); // 'editor' vs 'creator'
+  const [editingApps, setEditingApps] = useState<string[]>(
+    currentUser?.editingApps && currentUser.editingApps.length > 0
+      ? currentUser.editingApps
+      : ['Adobe Premiere Pro', 'Adobe After Effects', 'DaVinci Resolve']
+  );
   const [isVerifiedPro, setIsVerifiedPro] = useState(currentUser?.hasVerifiedBadge ?? false);
   const [kycStatus, setKycStatus] = useState<'unverified' | 'pending' | 'verified' | 'rejected'>(currentUser?.kycStatus || 'unverified');
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar || DEFAULT_AVATARS[0].svgDataUri);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpdateEditingApps = (newApps: string[]) => {
+    setEditingApps(newApps);
+    if (onUpdateProfile) {
+      onUpdateProfile({ editingApps: newApps });
+    }
+  };
 
   const handleSelectDefaultAvatar = (svgUri: string) => {
     soundEffects.playSubTabClick();
@@ -114,6 +130,9 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
       setEmail(currentUser.email || '');
       if (currentUser.recoveryEmail) setRecoveryEmail(currentUser.recoveryEmail);
       setRole(currentUser.role || 'editor');
+      if (currentUser.editingApps && currentUser.editingApps.length > 0) {
+        setEditingApps(currentUser.editingApps);
+      }
       setIsVerifiedPro(currentUser.hasVerifiedBadge ?? false);
       setKycStatus(currentUser.kycStatus || 'unverified');
       if (currentUser.avatar) setAvatarUrl(currentUser.avatar);
@@ -529,6 +548,28 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                   </span>
                 </div>
               </div>
+
+              {/* Editing Apps Used (Shown ONLY if role is editor) */}
+              {role === 'editor' && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                  <span className="text-[11px] font-mono text-teal-400 font-bold flex items-center gap-1">
+                    <Film className="w-3 h-3 text-teal-400" />
+                    <span>Editing Software:</span>
+                  </span>
+                  {editingApps.length > 0 ? (
+                    editingApps.map((app) => (
+                      <span
+                        key={app}
+                        className="px-2 py-0.5 rounded-lg bg-teal-500/15 border border-teal-500/30 text-teal-300 text-[11px] font-mono font-medium shadow-sm"
+                      >
+                        {app}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-500 italic">No editing software selected</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -648,6 +689,45 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
           </div>
 
           {/* KYC Status Banner & Fast-Track Controls */}
+          {(() => {
+            const graceInfo = getGracePeriodInfo(currentUser);
+            if (graceInfo.hasFilledVerification) return null;
+            return (
+              <div className={`p-4 rounded-2xl border text-xs space-y-2.5 ${
+                graceInfo.isGracePeriodExpired
+                  ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                  : 'bg-[#151c2c] border-cyan-500/40 text-cyan-200'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className={`w-4 h-4 ${graceInfo.isGracePeriodExpired ? 'text-rose-400' : 'text-cyan-400'}`} />
+                    <span className="font-bold text-white">
+                      15-Day Unverified Access Grace Window
+                    </span>
+                  </div>
+                  <span className={`px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] uppercase border ${
+                    graceInfo.isGracePeriodExpired
+                      ? 'bg-rose-500/30 border-rose-400/40 text-rose-200 animate-pulse'
+                      : 'bg-cyan-500/20 border-cyan-400/40 text-cyan-300'
+                  }`}>
+                    {graceInfo.isGracePeriodExpired ? '⚠️ EXPIRED (Trading Locked)' : `⏱️ ${graceInfo.daysRemaining} Days Left`}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  {graceInfo.isGracePeriodExpired ? (
+                    <span className="text-rose-300 font-medium">
+                      Your account was registered on {graceInfo.formattedCreatedDate} ({graceInfo.daysActive} days ago). Because the 15-day unverified access limit has passed, escrow trading, deals, and payouts are restricted. Submit your verification information below to unlock trading with other users.
+                    </span>
+                  ) : (
+                    <span>
+                      Unverified accounts can be accessed for only 15 days from registration ({graceInfo.formattedCreatedDate}). You are currently on <strong>Day {graceInfo.daysActive} of 15</strong>. Complete identity verification below before day 15 to maintain uninterrupted trading access.
+                    </span>
+                  )}
+                </p>
+              </div>
+            );
+          })()}
+
           {kycStatus === 'verified' && (
             <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
               <div className="flex items-center gap-2.5">
@@ -938,8 +1018,45 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
           </form>
         </section>
 
-        {/* 3. PREMIUM VERIFICATION BADGE SUBSCRIPTION - 5 cols */}
+        {/* 3. PREMIUM VERIFICATION BADGE SUBSCRIPTION & EDITOR TOOLING - 5 cols */}
         <div className="lg:col-span-5 space-y-6">
+          {/* Editing Software Suite Card (Shown ONLY if user role is Editor) */}
+          {role === 'editor' && (
+            <section 
+              id="editor-apps-suite-card"
+              className="rounded-3xl bg-[#12151e] border border-teal-500/30 p-6 sm:p-7 shadow-xl space-y-4 relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-36 h-36 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
+
+              <div className="flex items-center justify-between pb-3 border-b border-white/[0.06] relative z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
+                    <Film className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white tracking-tight font-['Space_Grotesk']">
+                      Editing Software Suite
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      What editing apps do you use? (Shown on your profile)
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30 uppercase">
+                  Editor
+                </span>
+              </div>
+
+              <div className="relative z-10">
+                <EditingAppsSelector
+                  selectedApps={editingApps}
+                  onChange={handleUpdateEditingApps}
+                  readOnly={false}
+                />
+              </div>
+            </section>
+          )}
+
           <section 
             id="premium-subscription-card"
             className="rounded-3xl bg-gradient-to-b from-[#18152b] via-[#131120] to-[#0e0d16] border border-purple-500/40 p-6 sm:p-7 shadow-2xl relative overflow-hidden space-y-6"

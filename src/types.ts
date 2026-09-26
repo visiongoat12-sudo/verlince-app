@@ -36,6 +36,8 @@ export interface UserProfile {
   avatar: string;
   kycStatus: 'verified' | 'pending' | 'unverified' | 'rejected';
   walletBalance: number;
+  editingApps?: string[];
+  createdAt?: string;
   kycData?: {
     legalName?: string;
     idType?: string;
@@ -175,4 +177,5 @@ export interface CreatorProfile {
   deliveryTime: string;
   createdAt?: string;
   portfolioUrl?: string;
+  editingApps?: string[];
 }

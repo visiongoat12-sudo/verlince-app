@@ -17,6 +17,7 @@ export const CLEAN_SLATE_USER: UserProfile = {
   avatar: DEFAULT_AVATARS[0].svgDataUri,
   kycStatus: 'unverified',
   walletBalance: 0,
+  editingApps: ['Adobe Premiere Pro', 'Adobe After Effects', 'DaVinci Resolve'],
 };
 
 // Known demo / mock identifiers that must never be retained

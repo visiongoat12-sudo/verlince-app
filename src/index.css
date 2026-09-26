@@ -272,3 +272,35 @@ input, select, textarea, button {
   }
 }
 
+/* ==========================================================================
+   LINEAR x APPLE x CASHFREE DYNAMIC ANIMATIONS & GPU ACCELERATION
+   ========================================================================== */
+
+/* GPU Hardware Acceleration for 60fps Scrolling */
+.transform-gpu {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.will-change-transform {
+  will-change: transform, opacity;
+}
+
+/* Blur-to-focus smooth reveal */
+.blur-focus-enter {
+  opacity: 0;
+  filter: blur(8px);
+  transform: translate3d(0, 24px, 0) scale(0.98);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.blur-focus-active {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+

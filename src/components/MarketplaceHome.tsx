@@ -35,7 +35,8 @@ import {
   Cpu,
   Palette,
   Camera,
-  Play
+  Play,
+  Handshake as HandshakeIcon
 } from 'lucide-react';
 import { CreatorProfile, UserRole } from '../types';
 import { VerilanceLogo } from './VerilanceLogo';
@@ -46,6 +47,10 @@ import {
 } from '../lib/firebase';
 import { getRandomDefaultAvatar } from '../lib/defaultAvatars';
 import { soundEffects } from '../lib/soundEffects';
+import { UserProfileModal, UserPfpTarget } from './UserProfileModal';
+import { SpotlightCard } from './SpotlightCard';
+import { ScrollReveal } from './ScrollReveal';
+import { AnimatedCounter } from './AnimatedCounter';
 
 interface MarketplaceHomeProps {
   onOpenDealModal: () => void;
@@ -72,6 +77,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
 
   // Real Database State (Dynamically fetched from Firestore)
   const [talents, setTalents] = useState<CreatorProfile[]>([]);
+  const [selectedPfpUser, setSelectedPfpUser] = useState<UserPfpTarget | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -481,6 +487,51 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                 Reset All
               </button>
             </div>
+
+            {/* Live Metrics Strip (Apple x Linear x Cashfree style) */}
+            <ScrollReveal direction="up" delayMs={200} className="pt-8 max-w-4xl mx-auto">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <SpotlightCard className="p-4 text-center border-white/[0.08] bg-[#0c1018]/80 backdrop-blur-sm">
+                  <div className="text-2xl sm:text-3xl font-extrabold text-cyan-400 font-mono tracking-tight">
+                    <AnimatedCounter value={2} suffix="%" duration={1200} />
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">Flat Platform Fee</p>
+                  <span className="text-[9px] font-mono text-cyan-300/80 bg-cyan-500/10 px-1.5 py-0.2 rounded mt-1 inline-block">
+                    vs 10–20% Industry
+                  </span>
+                </SpotlightCard>
+
+                <SpotlightCard className="p-4 text-center border-white/[0.08] bg-[#0c1018]/80 backdrop-blur-sm">
+                  <div className="text-2xl sm:text-3xl font-extrabold text-teal-300 font-mono tracking-tight">
+                    <AnimatedCounter value={2450000} prefix="₹" suffix="+" duration={1600} />
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">Escrow Volume Secured</p>
+                  <span className="text-[9px] font-mono text-teal-300/80 bg-teal-500/10 px-1.5 py-0.2 rounded mt-1 inline-block">
+                    100% Payout Guaranteed
+                  </span>
+                </SpotlightCard>
+
+                <SpotlightCard className="p-4 text-center border-white/[0.08] bg-[#0c1018]/80 backdrop-blur-sm">
+                  <div className="text-2xl sm:text-3xl font-extrabold text-purple-300 font-mono tracking-tight">
+                    <AnimatedCounter value={1840} suffix="+" duration={1400} />
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">4K Proofs Delivered</p>
+                  <span className="text-[9px] font-mono text-purple-300/80 bg-purple-500/10 px-1.5 py-0.2 rounded mt-1 inline-block">
+                    Diagonal Watermark DRM
+                  </span>
+                </SpotlightCard>
+
+                <SpotlightCard className="p-4 text-center border-white/[0.08] bg-[#0c1018]/80 backdrop-blur-sm">
+                  <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 font-mono tracking-tight">
+                    <AnimatedCounter value={99.8} decimals={1} suffix="%" duration={1500} />
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">Dispute-Free Releases</p>
+                  <span className="text-[9px] font-mono text-emerald-300/80 bg-emerald-500/10 px-1.5 py-0.2 rounded mt-1 inline-block">
+                    VAKRA AI Sentinel
+                  </span>
+                </SpotlightCard>
+              </div>
+            </ScrollReveal>
           </div>
         </div>
       </section>
@@ -510,49 +561,50 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {categoryCards.map((cat) => {
+          {categoryCards.map((cat, idx) => {
             const Icon = cat.icon;
             const isSelected = selectedCategory === cat.name;
             return (
-              <button
-                key={cat.name}
-                onClick={() => {
-                  soundEffects.playSubTabClick();
-                  setSelectedCategory(isSelected ? 'All' : cat.name);
-                  const el = document.getElementById('verified-talent-directory');
-                  if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className={`p-5 rounded-2xl border text-left transition-all group flex flex-col justify-between h-36 ${
-                  isSelected
-                    ? 'bg-gradient-to-b from-cyan-500/20 to-teal-500/10 border-cyan-500/50 shadow-[0_0_25px_rgba(6,182,212,0.25)]'
-                    : 'bg-[#0f121a] border-white/[0.07] hover:border-cyan-500/40 hover:bg-[#131824]'
-                }`}
-              >
-                <div className="flex items-start justify-between w-full">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-                    isSelected 
-                      ? 'bg-cyan-400 text-slate-950 font-bold' 
-                      : 'bg-white/5 text-slate-300 group-hover:text-cyan-400 group-hover:bg-cyan-500/10'
-                  }`}>
-                    <Icon className="w-5 h-5" />
+              <ScrollReveal key={cat.name} staggerIndex={idx} direction="up">
+                <SpotlightCard
+                  onClick={() => {
+                    soundEffects.playSubTabClick();
+                    setSelectedCategory(isSelected ? 'All' : cat.name);
+                    const el = document.getElementById('verified-talent-directory');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className={`p-5 cursor-pointer text-left transition-all group flex flex-col justify-between h-36 ${
+                    isSelected
+                      ? 'bg-gradient-to-b from-cyan-500/20 to-teal-500/10 border-cyan-500/50 shadow-[0_0_25px_rgba(6,182,212,0.25)]'
+                      : 'bg-[#0f121a] hover:bg-[#131824]'
+                  }`}
+                >
+                  <div className="flex items-start justify-between w-full">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                      isSelected 
+                        ? 'bg-cyan-400 text-slate-950 font-bold' 
+                        : 'bg-white/5 text-slate-300 group-hover:text-cyan-400 group-hover:bg-cyan-500/10'
+                    }`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 transition" />
                   </div>
-                  <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 transition" />
-                </div>
 
-                <div>
-                  <h3 className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">
-                    {cat.name}
-                  </h3>
-                  <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
-                    <span className="flex items-center gap-0.5 text-amber-400 font-semibold">
-                      <Star className="w-3 h-3 fill-amber-400" />
-                      <span>{cat.rating}</span>
-                    </span>
-                    <span>•</span>
-                    <span>{cat.skills}</span>
+                  <div>
+                    <h3 className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">
+                      {cat.name}
+                    </h3>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
+                      <span className="flex items-center gap-0.5 text-amber-400 font-semibold">
+                        <Star className="w-3 h-3 fill-amber-400" />
+                        <span>{cat.rating}</span>
+                      </span>
+                      <span>•</span>
+                      <span>{cat.skills}</span>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </SpotlightCard>
+              </ScrollReveal>
             );
           })}
         </div>
@@ -1030,20 +1082,73 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                   {/* Top Row: Avatar, Name, Handle, Pro Badge */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3.5">
-                      <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEffects.playTabClick();
+                          setSelectedPfpUser({
+                            id: talent.id,
+                            name: talent.name,
+                            username: talent.username,
+                            avatar: talent.avatar,
+                            role: talent.role.toLowerCase().includes('creator') ? 'creator' : 'editor',
+                            bio: talent.bio,
+                            kycStatus: 'verified',
+                            hasVerifiedBadge: talent.verifiedPro,
+                            rating: talent.rating,
+                            reviewsCount: talent.reviewsCount,
+                            hourlyRate: talent.hourlyRate,
+                            tags: talent.tags,
+                            dealsCompleted: talent.dealsCompleted,
+                            deliveryTime: talent.deliveryTime,
+                            sampleVideoTitle: talent.sampleVideoTitle,
+                            editingApps: talent.editingApps && talent.editingApps.length > 0
+                              ? talent.editingApps
+                              : ['Adobe Premiere Pro', 'DaVinci Resolve', 'Adobe After Effects'],
+                          });
+                        }}
+                        className="relative cursor-pointer group/avatar shrink-0 text-left"
+                        title="Click to view interactive profile & credentials"
+                      >
                         <img
                           src={talent.avatar}
                           alt={talent.name}
-                          className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover ring-2 ring-white/10 group-hover:ring-cyan-400/40 transition"
+                          className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover ring-2 ring-white/10 group-hover/avatar:ring-cyan-400 group-hover/avatar:scale-105 transition"
                         />
                         <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-cyan-400 ring-2 ring-[#0e1119]" />
-                      </div>
+                      </button>
 
                       <div className="space-y-0.5">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <h3 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEffects.playTabClick();
+                              setSelectedPfpUser({
+                                id: talent.id,
+                                name: talent.name,
+                                username: talent.username,
+                                avatar: talent.avatar,
+                                role: talent.role.toLowerCase().includes('creator') ? 'creator' : 'editor',
+                                bio: talent.bio,
+                                kycStatus: 'verified',
+                                hasVerifiedBadge: talent.verifiedPro,
+                                rating: talent.rating,
+                                reviewsCount: talent.reviewsCount,
+                                hourlyRate: talent.hourlyRate,
+                                tags: talent.tags,
+                                dealsCompleted: talent.dealsCompleted,
+                                deliveryTime: talent.deliveryTime,
+                                sampleVideoTitle: talent.sampleVideoTitle,
+                                editingApps: talent.editingApps && talent.editingApps.length > 0
+                                  ? talent.editingApps
+                                  : ['Adobe Premiere Pro', 'DaVinci Resolve', 'Adobe After Effects'],
+                              });
+                            }}
+                            className="text-sm sm:text-base font-bold text-white hover:text-cyan-300 transition text-left cursor-pointer"
+                          >
                             {talent.name}
-                          </h3>
+                          </button>
                           {talent.username && (
                             <span className="text-xs text-cyan-400/80 font-mono">
                               @{talent.username}
@@ -1079,6 +1184,27 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                   <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
                     {talent.bio}
                   </p>
+
+                  {/* Editing Apps Used (for Editors) */}
+                  {(talent.role.toLowerCase().includes('editor') || (talent.editingApps && talent.editingApps.length > 0)) && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      <span className="text-[10px] font-mono text-teal-400 font-bold flex items-center gap-1">
+                        <Film className="w-3 h-3 text-teal-400" />
+                        <span>Editing Apps:</span>
+                      </span>
+                      {(talent.editingApps && talent.editingApps.length > 0
+                        ? talent.editingApps
+                        : ['Adobe Premiere Pro', 'DaVinci Resolve', 'After Effects']
+                      ).map((app) => (
+                        <span
+                          key={app}
+                          className="px-2 py-0.5 rounded-md bg-teal-500/10 border border-teal-500/25 text-teal-300 text-[10px] font-mono font-medium"
+                        >
+                          {app}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Skill Tags */}
                   {talent.tags && talent.tags.length > 0 && (
@@ -1381,6 +1507,15 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
           </div>
         </div>
       </footer>
+
+      {/* Interactive Profile Modal (PFP Click Overlay) */}
+      <UserProfileModal
+        isOpen={!!selectedPfpUser}
+        onClose={() => setSelectedPfpUser(null)}
+        user={selectedPfpUser}
+        onOpenChat={onOpenChat}
+        onOpenDeal={() => onOpenDealModal()}
+      />
     </div>
   );
 };

@@ -24,6 +24,12 @@ import { NotificationCenterModal, AppNotification } from './components/Notificat
 import { HotkeyCheatsheetModal } from './components/HotkeyCheatsheetModal';
 import { AdminDelegationPanel } from './components/AdminDelegationPanel';
 import { AdminBadge } from './components/AdminBadge';
+import { KycGracePeriodBanner } from './components/KycGracePeriodBanner';
+import { VerificationRequiredModal } from './components/VerificationRequiredModal';
+import { UserProfileModal, UserPfpTarget } from './components/UserProfileModal';
+import { ScrollProgressBar } from './components/ScrollProgressBar';
+import { ParallaxBackground } from './components/ParallaxBackground';
+import { getGracePeriodInfo } from './lib/kycGracePeriod';
 import { isRootOwner, isUserAdmin, canManageAdmins, canManageKYCEscrow, ROOT_OWNER_EMAIL } from './lib/adminSecurity';
 import { 
   ShieldCheck, 
@@ -102,6 +108,8 @@ export default function App() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [selectedPfpUser, setSelectedPfpUser] = useState<UserPfpTarget | null>(null);
 
   // Deal Form Pre-fills (starts clean)
   const [dealInitialValues, setDealInitialValues] = useState<{
@@ -234,12 +242,7 @@ export default function App() {
         e.preventDefault();
         e.stopPropagation();
         soundEffects.playTabClick();
-        setIsDealModalOpen(true);
-        showNotification({
-          title: '⚡ Hotkey Activated (Ctrl+D)',
-          description: 'Opened Escrow Deal Creator.',
-          type: 'info',
-        });
+        handleRequestOpenDeal();
         return;
       }
 
@@ -448,6 +451,44 @@ export default function App() {
     });
   };
 
+  // Handle KYC Verification Submission (unfreezes trading immediately)
+  const handleVerificationSubmitted = (updated: Partial<UserProfile>) => {
+    handleUpdateProfile(updated);
+    soundEffects.playNotificationSound();
+    showNotification({
+      title: '🎉 Verification Information Submitted',
+      description: 'Your identity details have been recorded. Escrow deals and trading are now unlocked!',
+      type: 'success',
+      actionView: 'escrow',
+    });
+    setIsVerificationModalOpen(false);
+  };
+
+  // Trade/Deal Gate Guard: Restricts trading if 15-day unverified grace period expired
+  const handleRequestOpenDeal = (prefill?: {
+    serviceType?: string;
+    amount?: number;
+    deadline?: string;
+    description?: string;
+    senderRole?: 'client' | 'freelancer';
+  }) => {
+    const graceStatus = getGracePeriodInfo(currentUser);
+    if (!graceStatus.canTrade) {
+      soundEffects.playAlertWarningSound();
+      showNotification({
+        title: '🔒 Verification Required to Trade',
+        description: '15-day unverified access period expired. Submit your verification details to trade with other users.',
+        type: 'alert',
+      });
+      setIsVerificationModalOpen(true);
+      return;
+    }
+    if (prefill) {
+      setDealInitialValues((prev) => ({ ...prev, ...prefill }));
+    }
+    setIsDealModalOpen(true);
+  };
+
   const handleSignOut = () => {
     clearAllStorageData();
     setCurrentUser(CLEAN_SLATE_USER);
@@ -613,6 +654,18 @@ export default function App() {
 
   // Confirm Deal from Modal with optional immediate funding
   const handleConfirmDeal = (deal: DealAgreement, triggerPaymentImmediately: boolean = true) => {
+    const graceStatus = getGracePeriodInfo(currentUser);
+    if (!graceStatus.canTrade) {
+      soundEffects.playAlertWarningSound();
+      showNotification({
+        title: '🔒 Verification Required to Trade',
+        description: '15-day unverified access period expired. Submit your verification details to trade with other users.',
+        type: 'alert',
+      });
+      setIsVerificationModalOpen(true);
+      return;
+    }
+
     setActiveDeal(deal);
     setWorkDelivery(null); // Reset delivery state for new deal
     saveDealToDB(deal).catch((err) => console.warn('[App] Firestore deal save notice:', err));
@@ -909,7 +962,8 @@ export default function App() {
   // Automatically redirect any unauthenticated user immediately to the Login/Registration screen before rendering any content.
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen w-full bg-[#07090d] text-slate-100 flex flex-col justify-center items-center relative overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
+      <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col justify-center items-center relative overflow-hidden font-['Plus_Jakarta_Sans',sans-serif] transform-gpu">
+        <ParallaxBackground />
         <AuthOnboardingModal
           isOpen={true}
           onAuthSuccess={handleAuthSuccess}
@@ -921,7 +975,13 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#07090d] text-slate-100 overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
+    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-['Plus_Jakarta_Sans',sans-serif] transform-gpu will-change-transform relative">
+      {/* 0. Glowing Cyan/Purple Scroll Progress Bar pinned to top of viewport */}
+      <ScrollProgressBar />
+
+      {/* Subtle Cyber Grid & Glowing Gradient Parallax Background */}
+      <ParallaxBackground />
+
       {/* 0. HOLOGRAPHIC NOTIFICATION TOAST POPUP */}
       {toastNotification && (
         <div 
@@ -1159,7 +1219,7 @@ export default function App() {
             id="header-create-deal-btn"
             onClick={() => {
               soundEffects.playTabClick();
-              setIsDealModalOpen(true);
+              handleRequestOpenDeal();
             }}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 text-slate-950 font-bold text-xs transition shadow-md shadow-cyan-500/20 cursor-pointer"
             title="Post New Deal / Escrow Contract (Ctrl+D)"
@@ -1291,12 +1351,21 @@ export default function App() {
         </div>
       </header>
 
+      {/* 15-Day Unverified Access Grace Period Banner */}
+      <KycGracePeriodBanner
+        currentUser={currentUser}
+        onRequestVerification={() => setIsVerificationModalOpen(true)}
+      />
+
       {/* 2. MAIN APPLICATION WORKSPACE */}
       {currentView === 'marketplace' ? (
         /* UPWORK-INSPIRED FREELANCE MARKETPLACE INTERFACE */
-        <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10] pb-20 md:pb-0">
+        <main 
+          id="marketplace-scroll-container" 
+          className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/70 pb-20 md:pb-0 relative z-10 transform-gpu will-change-transform"
+        >
           <MarketplaceHome
-            onOpenDealModal={() => setIsDealModalOpen(true)}
+            onOpenDealModal={handleRequestOpenDeal}
             onOpenProfile={() => setCurrentView('profile')}
             onOpenChat={(talentName) => {
               if (talentName) {
@@ -1326,7 +1395,10 @@ export default function App() {
         </main>
       ) : currentView === 'profile' ? (
         /* USER PROFILE & VERIFICATION DASHBOARD */
-        <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10] pb-20 md:pb-0">
+        <main 
+          id="profile-scroll-container" 
+          className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/70 pb-20 md:pb-0 relative z-10 transform-gpu will-change-transform"
+        >
           <ProfileVerificationDashboard 
             currentUser={currentUser}
             onUpdateProfile={handleUpdateProfile}
@@ -1338,7 +1410,10 @@ export default function App() {
         </main>
       ) : currentView === 'admin' ? (
         /* MULTI-TIERED ADMIN DELEGATION & CONTROL HUD */
-        <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#0A0B10] pb-20 md:pb-0">
+        <main 
+          id="admin-scroll-container" 
+          className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/70 pb-20 md:pb-0 relative z-10 transform-gpu will-change-transform"
+        >
           <AdminDelegationPanel
             currentUser={currentUser}
             onClose={() => setCurrentView('marketplace')}
@@ -1346,7 +1421,7 @@ export default function App() {
         </main>
       ) : (
         /* ESCROW WORKSPACE & CHAT */
-        <div className="flex-1 flex overflow-hidden relative pb-16 md:pb-0">
+        <div className="flex-1 flex overflow-hidden relative pb-16 md:pb-0 z-10">
           {/* Center Workspace: Chat & VAKRA AI */}
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             {/* Embedded VAKRA Cyber Security AI Assistant Panel */}
@@ -1368,7 +1443,7 @@ export default function App() {
                 onSendMessage={handleSendMessage}
                 onSendViewOnceMedia={handleSendViewOnceMedia}
                 onExpireViewOnceMedia={handleExpireViewOnceMedia}
-                onOpenDealModal={() => setIsDealModalOpen(true)}
+                onOpenDealModal={handleRequestOpenDeal}
                 onSubmitWork={handleSubmitWork}
                 onApproveAndRelease={handleApproveAndRelease}
                 onFundEscrow={() => {
@@ -1391,7 +1466,7 @@ export default function App() {
             <AgreementSidebar
               deal={activeDeal}
               currentUser={currentUser}
-              onOpenCreateDeal={() => setIsDealModalOpen(true)}
+              onOpenCreateDeal={handleRequestOpenDeal}
               onFundEscrow={() => {
                 if (activeDeal) {
                   setPendingFundingDeal(activeDeal);
@@ -1427,7 +1502,7 @@ export default function App() {
                     currentUser={currentUser}
                     onOpenCreateDeal={() => {
                       setIsMobileSidebarOpen(false);
-                      setIsDealModalOpen(true);
+                      handleRequestOpenDeal();
                     }}
                     onFundEscrow={() => {
                       setIsMobileSidebarOpen(false);
@@ -1471,6 +1546,49 @@ export default function App() {
         onClose={() => setIsOnboardingOpen(false)}
         user={currentUser}
         onSaveProfile={handleUpdateProfile}
+      />
+
+      {/* 15-Day Limit KYC Verification Prompt Modal */}
+      <VerificationRequiredModal
+        isOpen={isVerificationModalOpen}
+        onClose={() => setIsVerificationModalOpen(false)}
+        currentUser={currentUser}
+        onSaveVerification={handleVerificationSubmitted}
+        canDismiss={true}
+      />
+
+      {/* Global Interactive User Profile Modal (PFP Click Overlay) */}
+      <UserProfileModal
+        isOpen={!!selectedPfpUser}
+        onClose={() => setSelectedPfpUser(null)}
+        user={selectedPfpUser}
+        currentUser={currentUser}
+        onOpenChat={(userName) => {
+          setSelectedPfpUser(null);
+          let targetChannel = channels.find(c => c.name.toLowerCase().includes(userName.toLowerCase().split(' ')[0]));
+          if (!targetChannel) {
+            targetChannel = {
+              id: `ch-${Date.now()}`,
+              name: userName,
+              subtitle: 'Direct Channel',
+              avatar: getRandomDefaultAvatar().svgDataUri,
+              isGroup: false,
+              unreadCount: 0,
+              isOnline: true,
+              lastActive: 'Just now',
+            };
+            setChannels(prev => [targetChannel!, ...prev]);
+          }
+          setActiveChannel(targetChannel);
+          setCurrentView('escrow');
+        }}
+        onOpenDeal={(prefill) => {
+          setSelectedPfpUser(null);
+          handleRequestOpenDeal({
+            serviceType: prefill.serviceType,
+            amount: prefill.amount,
+          });
+        }}
       />
 
       {/* The 🤝 Deal Icon & Transaction Form Modal */}
@@ -1598,7 +1716,7 @@ export default function App() {
           id="mobile-nav-deal"
           onClick={() => {
             soundEffects.playTabClick();
-            setIsDealModalOpen(true);
+            handleRequestOpenDeal();
           }}
           className="flex-1 py-1.5 px-2 flex flex-col items-center justify-center min-h-[44px] rounded-xl text-teal-300 hover:text-teal-200 transition"
         >
