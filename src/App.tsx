@@ -27,6 +27,7 @@ import { AdminBadge } from './components/AdminBadge';
 import { KycGracePeriodBanner } from './components/KycGracePeriodBanner';
 import { VerificationRequiredModal } from './components/VerificationRequiredModal';
 import { UserProfileModal, UserPfpTarget } from './components/UserProfileModal';
+import { GoogleStyleProfileMenu } from './components/GoogleStyleProfileMenu';
 import { ScrollProgressBar } from './components/ScrollProgressBar';
 import { ParallaxBackground } from './components/ParallaxBackground';
 import { getGracePeriodInfo } from './lib/kycGracePeriod';
@@ -147,7 +148,7 @@ export default function App() {
     {
       id: 'notif-1',
       title: '🔒 Cyber-Escrow Protocol Online',
-      description: 'Razorpay 5% multi-sig vault active. Funds held securely until 4K master approval.',
+      description: 'Razorpay 2% multi-sig vault active. Funds held securely until 4K master approval.',
       type: 'escrow',
       timestamp: 'Just now',
       read: false,
@@ -709,7 +710,7 @@ export default function App() {
           {
             id: `h-pay-${Date.now()}`,
             title: `Funds Secured in Escrow 🔒 (ID: ${result.paymentId})`,
-            detail: `₹${result.amount.toLocaleString('en-IN')} authorized via Razorpay ${result.method}. VERILANCE 5% commission (₹${result.commissionFee}) reserved; ₹${result.netPayout.toLocaleString('en-IN')} escrow-locked for freelancer.`,
+            detail: `₹${result.amount.toLocaleString('en-IN')} authorized via Razorpay ${result.method}. VERILANCE 2% commission (₹${result.commissionFee}) reserved; ₹${result.netPayout.toLocaleString('en-IN')} escrow-locked for freelancer.`,
             timestamp: result.timestamp,
             type: 'secure',
           },
@@ -721,7 +722,7 @@ export default function App() {
 
     showNotification({
       title: '🔒 Razorpay Escrow Secured',
-      description: `₹${result.amount.toLocaleString('en-IN')} authorized & locked in Escrow. 5% platform commission allocated.`,
+      description: `₹${result.amount.toLocaleString('en-IN')} authorized & locked in Escrow. 2% platform commission allocated.`,
       type: 'escrow',
       actionView: 'escrow',
     });
@@ -733,7 +734,7 @@ export default function App() {
       senderRole: 'system',
       timestamp: result.timestamp,
       type: 'deal_invite',
-      text: `🔒 ESCROW SECURED VIA RAZORPAY: ₹${result.amount.toLocaleString('en-IN')} authorized (Ref: ${result.paymentId}). VERILANCE 5% insurance fee (₹${result.commissionFee}) allocated. ₹${result.netPayout.toLocaleString('en-IN')} will disburse to Editor upon your watermarked proof approval.`,
+      text: `🔒 ESCROW SECURED VIA RAZORPAY: ₹${result.amount.toLocaleString('en-IN')} authorized (Ref: ${result.paymentId}). VERILANCE 2% insurance fee (₹${result.commissionFee}) allocated. ₹${result.netPayout.toLocaleString('en-IN')} will disburse to Editor upon your watermarked proof approval.`,
       createdAt: new Date().toISOString(),
       channelId: activeChannel?.id || 'global',
     };
@@ -1108,12 +1109,12 @@ export default function App() {
               setIsWhyVerilanceOpen(true);
             }}
             className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-cyan-400/90 hover:text-cyan-300 hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/30"
-            title="Explore Why VERILANCE, 5% Fee Calculator & Core USPs"
+            title="Explore Why VERILANCE, 2% Fee Calculator & Core USPs"
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             <span>Why VERILANCE</span>
             <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold">
-              5%
+              2%
             </span>
           </button>
 
@@ -1273,57 +1274,20 @@ export default function App() {
             </span>
           </div>
 
-          {/* User Account Pill & Sign Out / Switch Profile */}
+          {/* User Account / Google-Style Profile Menu on the Right Top Side */}
           <div className="flex items-center gap-2 pl-2 border-l border-white/10">
-            {isAuthenticated ? (
-              <>
-                <button
-                  id="header-user-profile-menu-btn"
-                  onClick={() => {
-                    soundEffects.playNavTabClick();
-                    setCurrentView('profile');
-                  }}
-                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#141822] hover:bg-[#1a202d] border border-white/10 transition group"
-                  title="View Profile & Security"
-                >
-                  <img
-                    src={currentUser.avatar}
-                    alt={currentUser.name || 'User'}
-                    className="w-6 h-6 rounded-full object-cover ring-1 ring-cyan-500/40"
-                  />
-                  <div className="hidden md:flex flex-col text-left leading-none">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
-                        {currentUser.name ? currentUser.name.split(' ')[0] : 'Member'}
-                      </span>
-                      <AdminBadge user={currentUser} size="sm" />
-                    </div>
-                    <span className="text-[10px] text-cyan-400/80 font-mono">
-                      @{currentUser.username || 'user'}
-                    </span>
-                  </div>
-                </button>
-
-                <button
-                  id="header-auth-switch-btn"
-                  onClick={handleSignOut}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-red-500/15 hover:border-red-500/30 text-slate-400 hover:text-red-400 border border-white/10 text-xs transition flex items-center gap-1"
-                  title="Sign Out / Switch Account"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span className="hidden xl:inline text-[11px] font-medium">Log Out</span>
-                </button>
-              </>
-            ) : (
-              <button
-                id="header-login-btn"
-                onClick={() => setIsAuthModalOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold text-xs hover:brightness-110 shadow-md shadow-cyan-500/20 transition flex items-center gap-1.5"
-              >
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>Sign In</span>
-              </button>
-            )}
+            <GoogleStyleProfileMenu
+              currentUser={currentUser}
+              isAuthenticated={isAuthenticated}
+              onNavigate={(view) => {
+                setCurrentView(view);
+              }}
+              onOpenKyc={() => {
+                setCurrentView('profile');
+              }}
+              onSignOut={handleSignOut}
+              onOpenSignIn={() => setIsAuthModalOpen(true)}
+            />
 
             {/* Complete Data Reset and Storage Cleanup Button */}
             <button

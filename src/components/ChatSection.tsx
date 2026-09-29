@@ -278,7 +278,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
           label: 'Scan Contract Terms',
           icon: '🛡️',
           description: 'Run VAKRA anti-fraud scan',
-          action: () => onSendMessage('Checking the terms against VERILANCE 3% anti-fraud escrow guidelines. Can you confirm the final milestone?'),
+          action: () => onSendMessage('Checking the terms against VERILANCE 2% anti-fraud escrow guidelines. Can you confirm the final milestone?'),
         },
         {
           id: 'view-portfolio',
@@ -310,7 +310,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
           id: 'check-status',
           label: 'Check Escrow Status',
           icon: '⚡',
-          action: () => onSendMessage(`⚡ [Escrow Status]: Contract for "${activeDeal.title || activeDeal.serviceType}" (₹${activeDeal.amount.toLocaleString('en-IN')}) is awaiting Escrow deposit. 3% platform commission reserved.`),
+          action: () => onSendMessage(`⚡ [Escrow Status]: Contract for "${activeDeal.title || activeDeal.serviceType}" (₹${activeDeal.amount.toLocaleString('en-IN')}) is awaiting Escrow deposit. 2% platform commission reserved.`),
         },
         {
           id: 'request-revision',
@@ -334,7 +334,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({
           id: 'check-escrow-status',
           label: 'Check Escrow Status',
           icon: '🔒',
-          action: () => onSendMessage(`🔒 [Escrow Secured]: ₹${activeDeal.amount.toLocaleString('en-IN')} is locked in VERILANCE Escrow. Freelancer net payout ₹${activeDeal.netPayout.toLocaleString('en-IN')} (3% commission: ₹${activeDeal.commissionFee}). Deadline: ${activeDeal.deadline}.`),
+          action: () => onSendMessage(`🔒 [Escrow Secured]: ₹${activeDeal.amount.toLocaleString('en-IN')} is locked in VERILANCE Escrow. Freelancer net payout ₹${activeDeal.netPayout.toLocaleString('en-IN')} (2% commission: ₹${activeDeal.commissionFee}). Deadline: ${activeDeal.deadline}.`),
         },
         {
           id: 'submit-work-now',

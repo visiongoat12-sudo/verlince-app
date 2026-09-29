@@ -1,4 +1,5 @@
 import { UserProfile } from '../types';
+import { isRootOwner, isUserAdmin } from './adminSecurity';
 
 export const GRACE_PERIOD_DAYS = 15;
 
@@ -10,6 +11,11 @@ const SIMULATION_KEY = 'verilance_kyc_simulated_days_offset';
  */
 export function hasUserFilledVerification(user?: Partial<UserProfile> | null): boolean {
   if (!user) return false;
+
+  // Root Owner and Admins are permanently exempt
+  if (isRootOwner(user.email) || isUserAdmin(user)) {
+    return true;
+  }
   
   // Status check
   if (user.kycStatus === 'verified' || user.kycStatus === 'pending') {
@@ -113,6 +119,19 @@ export interface GracePeriodInfo {
 }
 
 export function getGracePeriodInfo(user?: Partial<UserProfile> | null): GracePeriodInfo {
+  // ABSOLUTE VERIFICATION EXEMPTION: Root Owner & Admins are permanently exempt from 15-day lockout
+  if (isRootOwner(user?.email) || isUserAdmin(user)) {
+    return {
+      daysActive: 0,
+      daysRemaining: GRACE_PERIOD_DAYS,
+      hasFilledVerification: true,
+      isGracePeriodExpired: false,
+      canTrade: true,
+      formattedCreatedDate: 'Permanent Exemption (Admin / Root Owner)',
+      isSimulated: false,
+    };
+  }
+
   const hasFilled = hasUserFilledVerification(user);
   const createdDate = getAccountCreationDate(user);
   

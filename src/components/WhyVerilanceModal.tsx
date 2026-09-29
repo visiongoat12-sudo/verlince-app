@@ -34,12 +34,12 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Real 5% Platform Fee vs 20% Traditional Platform Fee
-  const verilanceFeeRate = 0.05; // 5%
+  // Real 2% Platform Fee vs 20% Traditional Platform Fee
+  const verilanceFeeRate = 0.02; // 2%
   const traditionalFeeRate = 0.20; // 20% typical Upwork/Fiverr commission
 
   const verilanceFee = Math.round(calculatorBudget * verilanceFeeRate);
-  const verilancePayout = calculatorBudget - verilanceFee; // 95% payout
+  const verilancePayout = calculatorBudget - verilanceFee; // 98% payout
 
   const traditionalFee = Math.round(calculatorBudget * traditionalFeeRate);
   const traditionalPayout = calculatorBudget - traditionalFee;
@@ -81,7 +81,7 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
                 The Cyber-Escrow Protocol
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold">
-                Live 5% Micro-Fee Guarantee
+                Live 2% Micro-Fee Guarantee
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-['Space_Grotesk'] mt-1">
@@ -119,7 +119,7 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
               }`}
             >
               <Calculator className="w-3 h-3" />
-              <span>5% Calculator</span>
+              <span>2% Calculator</span>
             </button>
             <button
               onClick={() => {
@@ -141,7 +141,7 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
         {activeTab === 'usps' && (
           <div className="py-6 space-y-6 relative z-10 animate-in fade-in duration-200">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* USP 1: 5% Platform Fee */}
+              {/* USP 1: 2% Platform Fee */}
               <div className="p-5 rounded-2xl bg-[#0f1422] border border-cyan-500/30 hover:border-cyan-400/60 transition-all space-y-3 group shadow-lg shadow-cyan-500/10">
                 <div className="flex items-center justify-between">
                   <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform">
@@ -149,20 +149,20 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
                   </div>
                   <span className="px-3 py-1 rounded-xl bg-cyan-500/20 border border-cyan-400/60 text-cyan-300 text-xs font-mono font-black tracking-wide shadow-[0_0_15px_rgba(6,182,212,0.35)] flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                    Only 5% Platform Fee
+                    Only 2% Platform Fee
                   </span>
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white font-['Space_Grotesk'] group-hover:text-cyan-300 transition-colors">
-                    1. Ultra-Low 5% Platform Fee
+                    1. Ultra-Low 2% Platform Fee
                   </h3>
                   <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    Keep <strong>95% of your hard-earned creative payout</strong>. Unlike other platforms that seize 10% to 20% of every deal plus heavy withdrawal surcharges, VERILANCE runs lean on a transparent 5% escrow protocol fee.
+                    Keep <strong>98% of your hard-earned creative payout</strong>. Unlike other platforms that seize 10% to 20% of every deal plus heavy withdrawal surcharges, VERILANCE runs lean on a transparent 2% escrow protocol fee.
                   </p>
                 </div>
                 <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-400">
                   <span className="text-rose-400/90 font-medium">Other Platform Fees: ₹2,000 lost on ₹10,000</span>
-                  <span className="text-cyan-300 font-bold">VERILANCE: Only 5% (₹500) • Keep 95% (₹9,500)</span>
+                  <span className="text-cyan-300 font-bold">VERILANCE: Only 2% (₹200) • Keep 98% (₹9,800)</span>
                 </div>
               </div>
 
@@ -300,10 +300,10 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
                 <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-400/50 space-y-2 shadow-lg shadow-cyan-500/10">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-cyan-300 uppercase tracking-wider block">
-                      VERILANCE (5% Fee)
+                      VERILANCE (2% Fee)
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">
-                      95% PAYOUT
+                      98% PAYOUT
                     </span>
                   </div>
                   <div className="text-sm font-semibold text-slate-300 space-y-1">
@@ -312,11 +312,11 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
                       <span className="text-white">₹{calculatorBudget.toLocaleString('en-IN')}</span>
                     </div>
                     <div className="flex justify-between text-cyan-300">
-                      <span>VERILANCE 5% Platform Fee:</span>
+                      <span>VERILANCE 2% Platform Fee:</span>
                       <span>-₹{verilanceFee.toLocaleString('en-IN')}</span>
                     </div>
                     <div className="pt-2 border-t border-cyan-500/30 flex justify-between font-bold text-base text-emerald-400">
-                      <span>Freelancer Net Payout (95%):</span>
+                      <span>Freelancer Net Payout (98%):</span>
                       <span>₹{verilancePayout.toLocaleString('en-IN')}</span>
                     </div>
                   </div>
@@ -332,7 +332,7 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
                       You save ₹{totalSaved.toLocaleString('en-IN')} extra in your pocket!
                     </span>
                     <p className="text-[11px] text-slate-300">
-                      With VERILANCE's 5% micro-fee, you keep 95% of your revenue on every milestone.
+                      With VERILANCE's 2% micro-fee, you keep 98% of your revenue on every milestone.
                     </p>
                   </div>
                 </div>
@@ -353,7 +353,7 @@ export const WhyVerilanceModal: React.FC<WhyVerilanceModalProps> = ({
 
               <div className="divide-y divide-white/5 text-xs">
                 {[
-                  { feature: 'Commission Take-Rate', trad: '10% - 20% Cut', verilance: '5% Platform Fee', win: true },
+                  { feature: 'Commission Take-Rate', trad: '10% - 20% Cut', verilance: '2% Platform Fee', win: true },
                   { feature: 'Preview Protection', trad: 'Downloadable links (leaks)', verilance: 'View-Once & Anti-Screen Capture', win: true },
                   { feature: 'Dispute Arbitration', trad: 'Weeks-long email back-and-forth', verilance: 'Moveable VAKRA AI Sentinel', win: true },
                   { feature: 'Deposit Upfront', trad: 'Partial or discretionary', verilance: '100% Locked in Multi-Sig Escrow', win: true },

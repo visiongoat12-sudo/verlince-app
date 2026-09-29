@@ -32,6 +32,18 @@
       },
       "required": ["id", "name", "username", "email", "role"]
     },
+    "UserSensitiveData": {
+      "title": "UserSensitiveData",
+      "description": "Protected private identity and sensitive contact data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "recoveryEmail": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "bankDetails": { "type": "object" },
+        "kycIdNumber": { "type": "string" }
+      }
+    },
     "Creator": {
       "title": "Creator",
       "description": "Public verified creator/editor listing on the marketplace",
@@ -106,6 +118,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "User profile collection stored by user ID"
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": "UserSensitiveData",
+      "description": "Protected private identity data accessible strictly by account owner and Root Owner"
     },
     "/creators/{creatorId}": {
       "schema": "Creator",

@@ -85,7 +85,7 @@ export const RazorpaySecureCheckoutModal: React.FC<RazorpaySecureCheckoutModalPr
         amount: Math.round(amount * 100), // in paise
         currency: 'INR',
         name: 'VERILANCE Multi-Sig Escrow',
-        description: `Escrow for ${dealTitle || 'Freelance Service Contract'} (5% Platform Fee Protected)`,
+        description: `Escrow for ${dealTitle || 'Freelance Service Contract'} (2% Platform Fee Protected)`,
         image: 'https://cdn-icons-png.flaticon.com/512/2092/2092663.png',
         handler: (response: { razorpay_payment_id: string; razorpay_order_id?: string; razorpay_signature?: string }) => {
           soundEffects.playNotificationSound();
@@ -232,13 +232,13 @@ export const RazorpaySecureCheckoutModal: React.FC<RazorpaySecureCheckoutModalPr
             </div>
             <div className="flex items-center justify-between text-cyan-300">
               <span className="flex items-center gap-1">
-                VERILANCE 5% Escrow Insurance:
+                VERILANCE 2% Escrow Fee / Insurance:
                 <HelpCircle className="w-3 h-3 text-cyan-400/80" />
               </span>
               <span className="font-bold font-mono">₹{commissionFee.toLocaleString('en-IN')}</span>
             </div>
             <div className="pt-1.5 border-t border-white/5 flex items-center justify-between text-slate-200">
-              <span className="text-emerald-400 font-semibold">Net Payout to Freelancer (95%):</span>
+              <span className="text-emerald-400 font-semibold">Net Payout to Freelancer (98%):</span>
               <span className="font-black text-emerald-400 font-mono">₹{netPayout.toLocaleString('en-IN')}</span>
             </div>
             <p className="text-[10px] text-slate-400 italic pt-0.5">
