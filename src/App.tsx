@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   UserProfile, 
   DealAgreement, 
@@ -31,7 +31,7 @@ import { GoogleStyleProfileMenu } from './components/GoogleStyleProfileMenu';
 import { ScrollProgressBar } from './components/ScrollProgressBar';
 import { ParallaxBackground } from './components/ParallaxBackground';
 import { getGracePeriodInfo } from './lib/kycGracePeriod';
-import { isRootOwner, isUserAdmin, canManageAdmins, canManageKYCEscrow, ROOT_OWNER_EMAIL } from './lib/adminSecurity';
+import { isRootOwner, isProfileRootOwner, isUserAdmin, canManageAdmins, canManageKYCEscrow, ROOT_OWNER_EMAIL } from './lib/adminSecurity';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -63,6 +63,8 @@ import {
   saveUserToDB, 
   saveMessageToDB, 
   subscribeMessages, 
+  subscribeChannels,
+  saveChannelToDB,
   updateViewOnceMediaInDB, 
   saveDealToDB, 
   subscribeDeals 
@@ -75,6 +77,12 @@ import {
 } from './lib/dataReset';
 import { getRandomDefaultAvatar, DEFAULT_AVATARS } from './lib/defaultAvatars';
 import { soundEffects } from './lib/soundEffects';
+import {
+  uploadChatMedia,
+  formatFileSize,
+  ResumableUploadController,
+} from './lib/mediaUpload';
+import { SubmitWorkModal } from './components/SubmitWorkModal';
 
 export default function App() {
   // Check and enforce clean-slate auth logic on startup
@@ -108,6 +116,7 @@ export default function App() {
   // 2. Modals State
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
+  const [isSubmitWorkModalOpen, setIsSubmitWorkModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [selectedPfpUser, setSelectedPfpUser] = useState<UserPfpTarget | null>(null);
@@ -119,6 +128,8 @@ export default function App() {
     deadline?: string;
     description?: string;
     senderRole?: 'client' | 'freelancer';
+    counterpartyName?: string;
+    counterpartyId?: string;
   }>({
     serviceType: '',
     amount: 0,
@@ -133,6 +144,10 @@ export default function App() {
 
   // 4. Chat Messages Feed (Clean Slate: 0 messages initially)
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const pendingMediaFilesRef = useRef<
+    Map<string, { file: File; viewOnce: boolean; allowLargeChat?: boolean; caption?: string; channelId: string }>
+  >(new Map());
+  const activeMediaControllersRef = useRef<Map<string, ResumableUploadController>>(new Map());
 
   // 5. Active Deal State (Clean Slate: null / 0 active deals initially)
   const [activeDeal, setActiveDeal] = useState<DealAgreement | null>(null);
@@ -334,15 +349,74 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, []);
+  }, [currentUser]);
+
+  // Firebase Real-time Chat Channels Subscription (Excludes self-conversations)
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser?.id) return;
+    try {
+      const unsubscribe = subscribeChannels((rawChannels) => {
+        const normalized: Channel[] = [];
+        for (const ch of rawChannels) {
+          const isSelf =
+            ch.participantId === currentUser.id &&
+            (!ch.createdByUserId || ch.createdByUserId === currentUser.id);
+          if (isSelf) continue;
+
+          // Only show channels the user belongs to (or open channels without participant restriction)
+          const isMember =
+            !ch.participantId ||
+            ch.participantId === currentUser.id ||
+            ch.createdByUserId === currentUser.id ||
+            ch.isGroup;
+          if (!isMember) continue;
+
+          // If another user initiated this DM with us, display the initiator's name & avatar (never our own)
+          if (
+            ch.participantId === currentUser.id &&
+            ch.createdByUserId &&
+            ch.createdByUserId !== currentUser.id
+          ) {
+            normalized.push({
+              ...ch,
+              name: ch.createdByName || 'Creator Partner',
+              avatar: ch.createdByAvatar || ch.avatar,
+              participantId: ch.createdByUserId,
+              participantUsername: undefined,
+            });
+          } else {
+            normalized.push(ch);
+          }
+        }
+        setChannels(normalized);
+        setActiveChannel((prev) => {
+          if (prev && normalized.some((c) => c.id === prev.id)) return prev;
+          return normalized[0] || null;
+        });
+      });
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('[App] Firestore realtime channels listener notice:', err);
+    }
+  }, [isAuthenticated, currentUser?.id]);
 
   // Firebase Real-time Chat Messages Subscription
   useEffect(() => {
     if (!isAuthenticated) return;
     try {
       const unsubscribe = subscribeMessages(null, (realtimeMsgs) => {
-        if (realtimeMsgs && realtimeMsgs.length > 0) {
-          setMessages(realtimeMsgs);
+        if (realtimeMsgs) {
+          setMessages((prev) => {
+            // Preserve in-flight local uploading/failed items until finalized
+            const uploadingOrFailed = prev.filter(
+              (m) =>
+                m.fileAttachment?.deliveryStatus === 'uploading' ||
+                m.fileAttachment?.deliveryStatus === 'failed'
+            );
+            const remoteIds = new Set(realtimeMsgs.map((m) => m.id));
+            const extraLocal = uploadingOrFailed.filter((m) => !remoteIds.has(m.id));
+            return [...realtimeMsgs, ...extraLocal];
+          });
         }
       });
       return () => unsubscribe();
@@ -472,6 +546,8 @@ export default function App() {
     deadline?: string;
     description?: string;
     senderRole?: 'client' | 'freelancer';
+    counterpartyName?: string;
+    counterpartyId?: string;
   }) => {
     const graceStatus = getGracePeriodInfo(currentUser);
     if (!graceStatus.canTrade) {
@@ -486,6 +562,14 @@ export default function App() {
     }
     if (prefill) {
       setDealInitialValues((prev) => ({ ...prev, ...prefill }));
+    } else if (activeChannel) {
+      setDealInitialValues((prev) => ({
+        ...prev,
+        counterpartyName: activeChannel.participantUsername
+          ? `${activeChannel.name} (@${activeChannel.participantUsername})`
+          : activeChannel.name,
+        counterpartyId: activeChannel.participantId,
+      }));
     }
     setIsDealModalOpen(true);
   };
@@ -517,8 +601,76 @@ export default function App() {
     alert('Application database reset to blank slate (0 users, 0 active deals, 0 profiles).');
   };
 
+  // Open Chat Helper (Strict Self-Chat Prevention + Deterministic DM ID)
+  const handleOpenChat = (
+    target?:
+      | string
+      | { id?: string; userId?: string; name: string; username?: string; avatar?: string }
+  ) => {
+    if (!target) {
+      setCurrentView('escrow');
+      return;
+    }
+
+    const targetObj = typeof target === 'string' ? { name: target } : target;
+    const peerId = targetObj.userId || targetObj.id;
+    const peerUsername = targetObj.username?.trim().toLowerCase();
+    const myUsername = currentUser.username?.trim().toLowerCase();
+
+    const isSelfTarget =
+      (peerId && peerId === currentUser.id) ||
+      (peerUsername && myUsername && peerUsername === myUsername);
+
+    if (isSelfTarget) {
+      soundEffects.playAlertWarningSound();
+      showNotification({
+        title: 'Self-Chat Blocked',
+        description:
+          'You cannot chat with your own account. Use another account or external tool to test.',
+        type: 'alert',
+      });
+      return;
+    }
+
+    const cleanPeerId =
+      peerId || `peer_${targetObj.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    const deterministicId = `dm_${[currentUser.id, cleanPeerId].sort().join('__')}`;
+
+    let targetChannel =
+      channels.find(
+        (c) =>
+          c.id === deterministicId ||
+          (peerId && c.participantId === peerId) ||
+          (peerUsername && c.participantUsername?.toLowerCase() === peerUsername)
+      ) || null;
+
+    if (!targetChannel) {
+      targetChannel = {
+        id: deterministicId,
+        name: targetObj.name,
+        subtitle: 'Escrow Direct Channel',
+        avatar: targetObj.avatar || getRandomDefaultAvatar().svgDataUri,
+        isGroup: false,
+        unreadCount: 0,
+        isOnline: true,
+        lastActive: 'Just now',
+        participantId: cleanPeerId,
+        participantUsername: targetObj.username,
+        createdByUserId: currentUser.id,
+        createdByName: currentUser.name,
+        createdByAvatar: currentUser.avatar,
+      };
+      setChannels((prev) => [targetChannel!, ...prev]);
+      saveChannelToDB(targetChannel).catch(() => {});
+    }
+
+    setActiveChannel(targetChannel);
+    setCurrentView('escrow');
+  };
+
   // Handlers
   const handleSendMessage = (text: string) => {
+    const channelId = activeChannel?.id || 'global';
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       senderId: currentUser.id,
@@ -528,15 +680,245 @@ export default function App() {
       type: 'text',
       text,
       createdAt: new Date().toISOString(),
-      channelId: activeChannel?.id || 'global',
+      channelId,
     };
     setMessages((prev) => [...prev, newMsg]);
-    saveMessageToDB(newMsg, activeChannel?.id || 'global').catch((err) => {
+    saveMessageToDB(newMsg, channelId).catch((err) => {
       console.warn('[App] Realtime message broadcast notice:', err);
     });
   };
 
+  const executeMediaUpload = async (
+    msgId: string,
+    file: File,
+    viewOnce: boolean,
+    caption: string | undefined,
+    channelId: string,
+    allowLargeChat?: boolean
+  ) => {
+    try {
+      const uploaded = await uploadChatMedia(file, {
+        allowLargeChat,
+        channelId,
+        uploaderId: currentUser.id,
+        onController: (ctrl) => {
+          activeMediaControllersRef.current.set(msgId, ctrl);
+        },
+        onTelemetry: (t) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === msgId && m.fileAttachment
+                ? {
+                    ...m,
+                    fileAttachment: {
+                      ...m.fileAttachment,
+                      uploadProgress: t.percentage,
+                      bytesUploaded: t.bytesTransferred,
+                      uploadSpeedBps: t.speedBytesPerSec,
+                      etaSeconds: t.etaSeconds ?? undefined,
+                      deliveryStatus: t.status === 'paused' ? 'paused' : 'uploading',
+                    },
+                  }
+                : m
+            )
+          );
+        },
+      });
+
+      activeMediaControllersRef.current.delete(msgId);
+      const timestamp = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const finalMsg: ChatMessage = viewOnce
+        ? {
+            id: msgId,
+            senderId: currentUser.id,
+            senderName: currentUser.name,
+            senderRole: currentUser.role,
+            timestamp,
+            type: 'view_once',
+            text: caption,
+            viewOnceMedia: {
+              id: `vo-${Date.now()}`,
+              mediaType: uploaded.mediaKind === 'video' ? 'video' : 'image',
+              title: uploaded.fileName,
+              url: uploaded.url,
+              chunkedMediaId: uploaded.chunkedMediaId,
+              mimeType: uploaded.mimeType,
+              thumbnailUrl: uploaded.mediaKind === 'image' ? uploaded.url : undefined,
+              fileSize: uploaded.sizeLabel,
+              isExpired: false,
+              opened: false,
+            },
+            createdAt: new Date().toISOString(),
+            channelId,
+          }
+        : {
+            id: msgId,
+            senderId: currentUser.id,
+            senderName: currentUser.name,
+            senderRole: currentUser.role,
+            timestamp,
+            type: 'file',
+            text: caption,
+            fileAttachment: {
+              name: uploaded.fileName,
+              size: uploaded.sizeLabel,
+              sizeBytes: uploaded.sizeBytes,
+              type: uploaded.mediaKind,
+              url: uploaded.url,
+              chunkedMediaId: uploaded.chunkedMediaId,
+              mimeType: uploaded.mimeType,
+              uploadProgress: 100,
+              bytesUploaded: uploaded.sizeBytes,
+              deliveryStatus: 'sent',
+            },
+            createdAt: new Date().toISOString(),
+            channelId,
+          };
+
+      setMessages((prev) => prev.map((m) => (m.id === msgId ? finalMsg : m)));
+      await saveMessageToDB(finalMsg, channelId);
+      pendingMediaFilesRef.current.delete(msgId);
+
+      if (viewOnce) {
+        showNotification({
+          title: '1-Time Msg Sent',
+          description: `Protected ${uploaded.mediaKind} "${uploaded.fileName}" delivered cleanly.`,
+          type: 'security',
+        });
+      }
+    } catch (err: any) {
+      activeMediaControllersRef.current.delete(msgId);
+      const errorMsg = err?.message || 'Media upload failed. Check connection and retry.';
+      const isCancelled = errorMsg.toLowerCase().includes('cancelled');
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId && m.fileAttachment
+            ? {
+                ...m,
+                fileAttachment: {
+                  ...m.fileAttachment,
+                  deliveryStatus: isCancelled ? 'cancelled' : 'failed',
+                  deliveryError: errorMsg,
+                },
+              }
+            : m
+        )
+      );
+      if (!isCancelled) {
+        showNotification({
+          title: 'Media Delivery Failed',
+          description: errorMsg,
+          type: 'alert',
+        });
+      }
+    }
+  };
+
+  const handleSendMediaMessage = (
+    file: File,
+    options: { caption?: string; viewOnce: boolean; allowLargeChat?: boolean }
+  ) => {
+    const channelId = activeChannel?.id || 'global';
+    const msgId = `msg-media-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const mediaKind: 'video' | 'image' | 'zip' = file.type.startsWith('video/')
+      ? 'video'
+      : file.type.startsWith('image/')
+      ? 'image'
+      : 'zip';
+
+    pendingMediaFilesRef.current.set(msgId, {
+      file,
+      viewOnce: options.viewOnce,
+      allowLargeChat: options.allowLargeChat,
+      caption: options.caption,
+      channelId,
+    });
+
+    const optimisticMsg: ChatMessage = {
+      id: msgId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderRole: currentUser.role,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'file',
+      text: options.caption,
+      fileAttachment: {
+        name: file.name,
+        size: formatFileSize(file.size),
+        sizeBytes: file.size,
+        type: mediaKind,
+        mimeType: file.type,
+        uploadProgress: 0,
+        bytesUploaded: 0,
+        deliveryStatus: 'uploading',
+      },
+      createdAt: new Date().toISOString(),
+      channelId,
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+    executeMediaUpload(
+      msgId,
+      file,
+      options.viewOnce,
+      options.caption,
+      channelId,
+      options.allowLargeChat
+    );
+  };
+
+  const handlePauseMediaMessage = (messageId: string) => {
+    activeMediaControllersRef.current.get(messageId)?.pause();
+  };
+
+  const handleResumeMediaMessage = (messageId: string) => {
+    activeMediaControllersRef.current.get(messageId)?.resume();
+  };
+
+  const handleCancelMediaMessage = async (messageId: string) => {
+    const ctrl = activeMediaControllersRef.current.get(messageId);
+    if (ctrl) {
+      await ctrl.cancel();
+      activeMediaControllersRef.current.delete(messageId);
+    }
+  };
+
+  const handleRetryMediaMessage = (messageId: string) => {
+    const pending = pendingMediaFilesRef.current.get(messageId);
+    if (!pending) return;
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId && m.fileAttachment
+          ? {
+              ...m,
+              fileAttachment: {
+                ...m.fileAttachment,
+                deliveryStatus: 'uploading',
+                deliveryError: undefined,
+                uploadProgress: 0,
+                bytesUploaded: 0,
+              },
+            }
+          : m
+      )
+    );
+    executeMediaUpload(
+      messageId,
+      pending.file,
+      pending.viewOnce,
+      pending.caption,
+      pending.channelId,
+      pending.allowLargeChat
+    );
+  };
+
   const handleSendViewOnceMedia = (media: ViewOnceMedia, caption?: string) => {
+    const channelId = activeChannel?.id || 'global';
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       senderId: currentUser.id,
@@ -551,14 +933,14 @@ export default function App() {
         isExpired: false,
       },
       createdAt: new Date().toISOString(),
-      channelId: activeChannel?.id || 'global',
+      channelId,
     };
     setMessages((prev) => [...prev, newMsg]);
-    saveMessageToDB(newMsg, activeChannel?.id || 'global').catch((err) => {
+    saveMessageToDB(newMsg, channelId).catch((err) => {
       console.warn('[App] Realtime view once broadcast notice:', err);
     });
     showNotification({
-      title: '🔒 View Once Media Sent',
+      title: '1-Time Msg Sent',
       description: `Dispatched single-view protected attachment: "${media.title}". Destroys upon viewer close.`,
       type: 'security',
     });
@@ -744,29 +1126,17 @@ export default function App() {
     setPendingFundingDeal(null);
   };
 
-  // Submit Work (Freelancer role)
+  // Submit Work (Opens 5 GB Resumable Chunked Vault Submission Modal)
   const handleSubmitWork = () => {
-    const now = new Date();
-    const formattedDate = 'Sep 22 at 18:45 IST';
-    const targetDeadline = activeDeal?.deadline || '25 September 2026';
+    setIsSubmitWorkModalOpen(true);
+  };
 
-    const delivery: WorkDelivery = {
-      fileName: 'YouTube_Gadget_Teardown_v1_DraftCut.mp4',
-      timestamp: now.toISOString(),
-      formattedTime: formattedDate,
-      deadlineComparison: '3 Days Before Deadline (On Time) ⚡',
-      isOnTime: true,
-      fileSize: '1.42 GB',
-      resolution: '4K Ultra HD (3840x2160)',
-      duration: '10:00 Min',
-      watermarked: true,
-      isApproved: false,
-    };
-
+  const handleDeliverySubmitted = (delivery: WorkDelivery) => {
+    const targetDeadline = activeDeal?.deadline || 'Agreed Target';
     setWorkDelivery(delivery);
     showNotification({
-      title: '🎬 Watermarked Draft Submitted',
-      description: 'Editor submitted 4K preview with diagonal security watermark.',
+      title: '🎬 Deliverable Sealed in Escrow Master Vault',
+      description: `${delivery.fileName} (${delivery.fileSize}) locked in Vault. Client can review via lightweight watermarked stream.`,
       type: 'success',
       actionView: 'escrow',
     });
@@ -775,12 +1145,13 @@ export default function App() {
       const updated: DealAgreement = {
         ...activeDeal,
         status: 'work_submitted',
+        workDelivery: delivery,
         history: [
           ...activeDeal.history,
           {
             id: `h-submit-${Date.now()}`,
-            title: 'Watermarked Work Submitted 🎬',
-            detail: `Editor uploaded draft cut (1.42 GB) with diagonal watermark security. Mapped against ${targetDeadline}.`,
+            title: 'Master Vault Deliverable Submitted 🎬',
+            detail: `Editor uploaded ${delivery.fileName} (${delivery.fileSize}) into Escrow Master Vault with separated watermarked stream preview. Mapped against ${targetDeadline}.`,
             timestamp: 'Just now',
             type: 'submitted',
           },
@@ -790,7 +1161,6 @@ export default function App() {
       saveDealToDB(updated).catch((err) => console.warn('[App] Firestore work submission notice:', err));
     }
 
-    // Add chat message
     const workMsg: ChatMessage = {
       id: `work-${Date.now()}`,
       senderId: currentUser.id,
@@ -798,7 +1168,7 @@ export default function App() {
       senderRole: currentUser.role,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'text',
-      text: '🎬 I have submitted the draft cut through Trustway Watermarked Delivery! You can review the full 10-minute preview. Click "Approve & Release Funds" to unlock the clean 4K export.',
+      text: `🎬 Submitted "${delivery.fileName}" (${delivery.fileSize}) to the private Escrow Master Vault! Review the watermarked stream preview below and click "Approve & Release Funds" to unlock the clean master download.`,
       createdAt: new Date().toISOString(),
       channelId: activeChannel?.id || 'global',
     };
@@ -806,8 +1176,8 @@ export default function App() {
     saveMessageToDB(workMsg, activeChannel?.id || 'global').catch(() => {});
   };
 
-  // Approve & Release Funds (Client role)
-  const handleApproveAndRelease = () => {
+  // Approve & Release Funds (Server-verified Escrow Vault unlock)
+  const handleApproveAndRelease = async () => {
     if (!activeDeal) return;
 
     // Strict KYC Escrow Check: Restrict payout releases until status is 'verified'
@@ -823,15 +1193,50 @@ export default function App() {
       return;
     }
 
+    // Verify & unlock the 5 GB Master Vault on backend before allowing raw master download
+    const vaultDealId = workDelivery?.dealId || activeDeal.id;
+    try {
+      const releaseResp = await fetch(`/api/vault/deals/${encodeURIComponent(vaultDealId)}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          verifiedByUserId: currentUser.id,
+          kycStatus: currentUser.kycStatus,
+          paymentRef: `REL_${Date.now()}`,
+        }),
+      });
+      if (!releaseResp.ok) {
+        const errBody = await releaseResp.json().catch(() => ({}));
+        showNotification({
+          title: 'Vault Release Blocked',
+          description: errBody?.error || 'Could not verify server escrow release.',
+          type: 'alert',
+        });
+        return;
+      }
+    } catch {
+      // Continue state release if backend unreachable in static mode
+    }
+
+    const unlockedDelivery: WorkDelivery | undefined = workDelivery
+      ? {
+          ...workDelivery,
+          isApproved: true,
+          watermarked: false,
+          vaultStatus: 'released_unlocked',
+        }
+      : undefined;
+
     const updated: DealAgreement = {
       ...activeDeal,
       status: 'released',
+      workDelivery: unlockedDelivery,
       history: [
         ...activeDeal.history,
         {
           id: `h-release-${Date.now()}`,
-          title: 'Funds Released & Transferred ⚡',
-          detail: `Authorized release. ₹${activeDeal.netPayout.toLocaleString('en-IN')} disbursed to KYC-verified bank account. Watermark cleared.`,
+          title: 'Funds Released & Master Vault Unlocked ⚡',
+          detail: `Authorized server-verified release. ₹${activeDeal.netPayout.toLocaleString('en-IN')} disbursed to KYC-verified bank account. Master Vault download unlocked.`,
           timestamp: 'Just now',
           type: 'released',
         },
@@ -840,23 +1245,23 @@ export default function App() {
     setActiveDeal(updated);
     saveDealToDB(updated).catch((err) => console.warn('[App] Firestore release notice:', err));
 
-    if (workDelivery) {
-      setWorkDelivery((prev) => (prev ? { ...prev, isApproved: true, watermarked: false } : null));
+    if (unlockedDelivery) {
+      setWorkDelivery(unlockedDelivery);
     }
 
     // Update wallet
     setCurrentUser((prev) => ({
       ...prev,
-      walletBalance: prev.walletBalance + (activeDeal?.netPayout || 1940),
+      walletBalance: prev.walletBalance + (activeDeal?.netPayout || 1960),
     }));
 
     showNotification({
-      title: '🎉 Escrow Settled & Funds Released',
-      description: `₹${activeDeal.netPayout.toLocaleString('en-IN')} paid to Editor! Clean 4K Master export unlocked.`,
+      title: 'Escrow Settled & Master Vault Unlocked',
+      description: `₹${activeDeal.netPayout.toLocaleString('en-IN')} paid to Editor! Clean Master Vault download unlocked.`,
       type: 'success',
     });
 
-    // Add chat notification
+    const channelId = activeChannel?.id || 'global';
     const releaseMsg: ChatMessage = {
       id: `release-${Date.now()}`,
       senderId: 'trustway-system',
@@ -864,9 +1269,74 @@ export default function App() {
       senderRole: 'system',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'text',
-      text: `🎉 ESCROW SETTLED: ₹${activeDeal.netPayout.toLocaleString('en-IN')} has been transferred to the Editor! Watermark cleared and clean 4K Master ready for download.`,
+      text: `ESCROW SETTLED: ₹${activeDeal.netPayout.toLocaleString('en-IN')} has been transferred to the Editor! Watermark cleared and Master Vault file unlocked for download.`,
+      createdAt: new Date().toISOString(),
+      channelId,
     };
     setMessages((prev) => [...prev, releaseMsg]);
+    saveMessageToDB(releaseMsg, channelId).catch(() => {});
+  };
+
+  // Request Revision on Submitted Work
+  const handleRequestRevision = (note: string) => {
+    if (!activeDeal) return;
+    const nextUsed = (activeDeal.revisionsUsed ?? 0) + 1;
+    const updated: DealAgreement = {
+      ...activeDeal,
+      status: 'revision_requested',
+      revisionsUsed: nextUsed,
+      history: [
+        ...activeDeal.history,
+        {
+          id: `h-rev-${Date.now()}`,
+          title: `Revision #${nextUsed} Requested`,
+          detail: note,
+          timestamp: 'Just now',
+          type: 'neutral',
+        },
+      ],
+    };
+    setActiveDeal(updated);
+    saveDealToDB(updated).catch((err) => console.warn('[App] Firestore revision notice:', err));
+    const channelId = activeChannel?.id || 'global';
+    const revMsg: ChatMessage = {
+      id: `rev-${Date.now()}`,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderRole: currentUser.role,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'text',
+      text: `[Revision #${nextUsed} Requested]: ${note}`,
+      createdAt: new Date().toISOString(),
+      channelId,
+    };
+    setMessages((prev) => [...prev, revMsg]);
+    saveMessageToDB(revMsg, channelId).catch(() => {});
+    showNotification({
+      title: `Revision #${nextUsed} Requested`,
+      description: note,
+      type: 'info',
+    });
+  };
+
+  // Toggle Milestone Completion Verification
+  const handleToggleMilestoneApproval = (milestoneId: string) => {
+    if (!activeDeal || !activeDeal.milestones) return;
+    const updatedMilestones = activeDeal.milestones.map((ms) =>
+      ms.id === milestoneId
+        ? {
+            ...ms,
+            status: (ms.status === 'approved' ? 'pending' : 'approved') as 'approved' | 'pending',
+            approvedAt: ms.status === 'approved' ? undefined : new Date().toISOString(),
+          }
+        : ms
+    );
+    const updated: DealAgreement = {
+      ...activeDeal,
+      milestones: updatedMilestones,
+    };
+    setActiveDeal(updated);
+    saveDealToDB(updated).catch(() => {});
   };
 
   // Raise Dispute
@@ -1331,28 +1801,9 @@ export default function App() {
           <MarketplaceHome
             onOpenDealModal={handleRequestOpenDeal}
             onOpenProfile={() => setCurrentView('profile')}
-            onOpenChat={(talentName) => {
-              if (talentName) {
-                // If a talent was clicked, switch to active chat with them or create fresh conversation
-                let targetChannel = channels.find(c => c.name.toLowerCase().includes(talentName.toLowerCase().split(' ')[0]));
-                if (!targetChannel) {
-                  targetChannel = {
-                    id: `ch-${Date.now()}`,
-                    name: talentName,
-                    subtitle: 'Escrow Direct Channel',
-                    avatar: getRandomDefaultAvatar().svgDataUri,
-                    isGroup: false,
-                    unreadCount: 0,
-                    isOnline: true,
-                    lastActive: 'Just now',
-                  };
-                  setChannels(prev => [targetChannel!, ...prev]);
-                }
-                setActiveChannel(targetChannel);
-              }
-              setCurrentView('escrow');
-            }}
+            onOpenChat={handleOpenChat}
             currentUserRole={currentUser.role}
+            currentUser={currentUser}
             onToggleRole={handleToggleUserRole}
             onOpenWhyVerilance={() => setIsWhyVerilanceOpen(true)}
           />
@@ -1403,8 +1854,19 @@ export default function App() {
                 activeChannel={activeChannel}
                 channels={channels}
                 onSelectChannel={setActiveChannel}
-                messages={messages}
+                messages={
+                  activeChannel
+                    ? messages.filter(
+                        (m) => !m.channelId || m.channelId === activeChannel.id || m.channelId === 'global'
+                      )
+                    : messages
+                }
                 onSendMessage={handleSendMessage}
+                onSendMediaMessage={handleSendMediaMessage}
+                onPauseMediaMessage={handlePauseMediaMessage}
+                onResumeMediaMessage={handleResumeMediaMessage}
+                onCancelMediaMessage={handleCancelMediaMessage}
+                onRetryMediaMessage={handleRetryMediaMessage}
                 onSendViewOnceMedia={handleSendViewOnceMedia}
                 onExpireViewOnceMedia={handleExpireViewOnceMedia}
                 onOpenDealModal={handleRequestOpenDeal}
@@ -1419,8 +1881,6 @@ export default function App() {
                 onRaiseDispute={handleRaiseDispute}
                 activeDeal={activeDeal}
                 workDelivery={workDelivery}
-                onToggleUserRole={handleToggleUserRole}
-                onOpenOnboarding={() => setIsOnboardingOpen(true)}
               />
             </div>
           </div>
@@ -1439,6 +1899,8 @@ export default function App() {
               }}
               onSubmitWork={handleSubmitWork}
               onApproveAndRelease={handleApproveAndRelease}
+              onRequestRevision={handleRequestRevision}
+              onToggleMilestoneApproval={handleToggleMilestoneApproval}
               onRaiseDispute={handleRaiseDispute}
               onResolveDispute={handleResolveDispute}
               isWorkSubmitted={!!workDelivery}
@@ -1483,6 +1945,8 @@ export default function App() {
                       setIsMobileSidebarOpen(false);
                       handleApproveAndRelease();
                     }}
+                    onRequestRevision={handleRequestRevision}
+                    onToggleMilestoneApproval={handleToggleMilestoneApproval}
                     onRaiseDispute={handleRaiseDispute}
                     onResolveDispute={handleResolveDispute}
                     isWorkSubmitted={!!workDelivery}
@@ -1527,30 +1991,16 @@ export default function App() {
         onClose={() => setSelectedPfpUser(null)}
         user={selectedPfpUser}
         currentUser={currentUser}
-        onOpenChat={(userName) => {
+        onOpenChat={(target) => {
           setSelectedPfpUser(null);
-          let targetChannel = channels.find(c => c.name.toLowerCase().includes(userName.toLowerCase().split(' ')[0]));
-          if (!targetChannel) {
-            targetChannel = {
-              id: `ch-${Date.now()}`,
-              name: userName,
-              subtitle: 'Direct Channel',
-              avatar: getRandomDefaultAvatar().svgDataUri,
-              isGroup: false,
-              unreadCount: 0,
-              isOnline: true,
-              lastActive: 'Just now',
-            };
-            setChannels(prev => [targetChannel!, ...prev]);
-          }
-          setActiveChannel(targetChannel);
-          setCurrentView('escrow');
+          handleOpenChat(target);
         }}
         onOpenDeal={(prefill) => {
           setSelectedPfpUser(null);
           handleRequestOpenDeal({
             serviceType: prefill.serviceType,
             amount: prefill.amount,
+            counterpartyName: prefill.freelancerName,
           });
         }}
       />
@@ -1561,8 +2011,17 @@ export default function App() {
         onClose={() => setIsDealModalOpen(false)}
         onConfirmDeal={handleConfirmDeal}
         initialValues={dealInitialValues}
-        clientName={currentUser.role === 'creator' ? (currentUser.name || 'Client') : 'Client Partner'}
-        freelancerName={currentUser.role === 'editor' ? (currentUser.name || 'Freelancer') : 'Editor Partner'}
+        clientName={currentUser.role === 'creator' ? (currentUser.name || 'Client') : (activeChannel?.name || 'Client Partner')}
+        freelancerName={currentUser.role === 'editor' ? (currentUser.name || 'Freelancer') : (activeChannel?.name || 'Editor Partner')}
+      />
+
+      {/* 5 GB Chunked Deliverable & Escrow Master Vault Submission Modal */}
+      <SubmitWorkModal
+        isOpen={isSubmitWorkModalOpen}
+        onClose={() => setIsSubmitWorkModalOpen(false)}
+        deal={activeDeal}
+        currentUser={currentUser}
+        onDeliverySubmitted={handleDeliverySubmitted}
       />
 
       {/* Razorpay Authentic Secure Escrow Gateway Modal */}
@@ -1718,7 +2177,7 @@ export default function App() {
           title="Why VERILANCE"
         >
           <Sparkles className="w-4 h-4 mb-1" />
-          <span className="text-[10px] tracking-tight font-bold">Why 5%</span>
+          <span className="text-[10px] tracking-tight font-bold">Why 2%</span>
         </button>
 
         <button

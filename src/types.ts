@@ -13,7 +13,7 @@ export interface AdminAuditLog {
   actorEmail: string;
   actorName: string;
   targetUserId: string;
-  targetUserEmail: string;
+  targetUserEmail?: string;
   targetUserName?: string;
   details: string;
   timestamp: string;
@@ -54,14 +54,30 @@ export interface UserProfile {
   };
 }
 
-export type DealStatus = 
+export type DealStatus =
   | 'no_deal'
+  | 'draft'
   | 'pending_funding'
   | 'pending'
   | 'escrow_secured'
   | 'work_submitted'
+  | 'revision_requested'
   | 'released'
   | 'disputed';
+
+export interface DealMilestone {
+  id: string;
+  title: string;
+  deliverable: string;
+  percentage: number;
+  amount: number;
+  dueDate: string;
+  status: 'pending' | 'funded' | 'submitted' | 'revision_requested' | 'approved' | 'released';
+  submissionNote?: string;
+  revisionNote?: string;
+  submittedAt?: string;
+  approvedAt?: string;
+}
 
 export interface WorkDelivery {
   fileName: string;
@@ -70,10 +86,20 @@ export interface WorkDelivery {
   deadlineComparison: string;
   isOnTime: boolean;
   fileSize: string;
+  fileSizeBytes?: number;
+  mimeType?: string;
   resolution: string;
   duration: string;
   watermarked: boolean;
   isApproved: boolean;
+  dealId?: string;
+  milestoneId?: string;
+  uploadId?: string;
+  vaultStatus?: 'locked_in_vault' | 'released_unlocked';
+  previewStreamUrl?: string;
+  previewHlsManifestUrl?: string;
+  masterVaultUrl?: string;
+  storageProvider?: 'vault_chunked' | 'firebase_storage';
 }
 
 export interface DisputeInfo {
@@ -94,10 +120,19 @@ export interface HistoryEvent {
 export interface DealAgreement {
   id: string;
   title: string;
+  category?: string;
   senderRole: 'client' | 'freelancer'; // client pays, freelancer receives
+  senderId?: string;
+  receiverId?: string;
   senderName: string;
   receiverName: string;
   serviceType: string;
+  scopeSummary?: string;
+  deliverables?: string[];
+  milestones?: DealMilestone[];
+  revisionLimit?: number;
+  revisionsUsed?: number;
+  offPlatformSafeguardAccepted?: boolean;
   amount: number;
   commissionFee: number;
   netPayout: number;
@@ -116,6 +151,8 @@ export interface ViewOnceMedia {
   mediaType: 'image' | 'video';
   title: string;
   url: string;
+  chunkedMediaId?: string;
+  mimeType?: string;
   thumbnailUrl?: string;
   fileSize: string;
   durationSeconds?: number;
@@ -138,8 +175,18 @@ export interface ChatMessage {
   fileAttachment?: {
     name: string;
     size: string;
+    sizeBytes?: number;
     type: 'video' | 'image' | 'zip';
+    url?: string;
+    chunkedMediaId?: string;
+    mimeType?: string;
     thumbnail?: string;
+    uploadProgress?: number;
+    bytesUploaded?: number;
+    uploadSpeedBps?: number;
+    etaSeconds?: number;
+    deliveryStatus?: 'uploading' | 'paused' | 'sent' | 'failed' | 'cancelled';
+    deliveryError?: string;
   };
   isWatermarkedPreview?: boolean;
   viewOnceMedia?: ViewOnceMedia;
@@ -157,6 +204,11 @@ export interface Channel {
   isOnline: boolean;
   lastActive: string;
   dealId?: string;
+  participantId?: string;
+  participantUsername?: string;
+  createdByUserId?: string;
+  createdByName?: string;
+  createdByAvatar?: string;
 }
 
 export interface CreatorProfile {

@@ -31,6 +31,7 @@ import {
   RefreshCw,
   XCircle,
   Eye,
+  EyeOff,
   Crown,
   Film,
   Sliders
@@ -79,7 +80,15 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
   const [username, setUsername] = useState(currentUser?.username || '');
   const [email, setEmail] = useState(currentUser?.email || '');
   const [recoveryEmail, setRecoveryEmail] = useState(currentUser?.recoveryEmail || '');
+  const [showPrivateEmail, setShowPrivateEmail] = useState(false);
   const [role, setRole] = useState<UserRole>(currentUser?.role || 'editor'); // 'editor' vs 'creator'
+
+  const maskEmailAddress = (emailStr: string): string => {
+    if (!emailStr || !emailStr.includes('@')) return '••••••••';
+    const [local, domain] = emailStr.split('@');
+    if (local.length <= 2) return `${local[0]}•@${domain}`;
+    return `${local[0]}${'•'.repeat(Math.max(4, local.length - 2))}${local[local.length - 1]}@${domain}`;
+  };
   const [editingApps, setEditingApps] = useState<string[]>(
     currentUser?.editingApps && currentUser.editingApps.length > 0
       ? currentUser.editingApps
@@ -495,17 +504,33 @@ export const ProfileVerificationDashboard: React.FC<ProfileVerificationDashboard
                 )}
               </div>
 
-              {/* Email & Secondary Recovery Email Details */}
-              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 font-mono">
-                <span className="flex items-center gap-1.5 text-slate-300">
-                  <span>{email}</span>
+              {/* Private Owner-Only Email & Recovery Email Details */}
+              <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-400 font-mono">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-slate-300">
+                  <Lock className="w-3 h-3 text-cyan-400 shrink-0" />
+                  <span>{showPrivateEmail ? email : maskEmailAddress(email)}</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-sans font-bold uppercase tracking-wider">
+                    Private • Owner Only
+                  </span>
                 </span>
                 {recoveryEmail && (
-                  <span className="flex items-center gap-1 text-slate-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
+                  <span className="flex items-center gap-1 text-slate-400 bg-white/5 px-2 py-1 rounded-lg border border-white/5">
                     <span className="text-slate-500">Recovery:</span>
-                    <span className="text-slate-300">{recoveryEmail}</span>
+                    <span className="text-slate-300">{showPrivateEmail ? recoveryEmail : maskEmailAddress(recoveryEmail)}</span>
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEffects.playToggleSound();
+                    setShowPrivateEmail((prev) => !prev);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[11px] font-sans font-semibold transition cursor-pointer"
+                  title="Toggle visibility of your private email"
+                >
+                  {showPrivateEmail ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  <span>{showPrivateEmail ? 'Hide Email' : 'Show Email'}</span>
+                </button>
                 {onOpenEditModal && (
                   <button
                     onClick={onOpenEditModal}

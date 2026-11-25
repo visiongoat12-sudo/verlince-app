@@ -234,7 +234,7 @@ export const GoogleStyleProfileMenu: React.FC<GoogleStyleProfileMenuProps> = ({
             )}
             
             <p className="text-[9.5px] text-slate-500 italic">
-              * Visible strictly to you and Root Owner. Hidden on all public views.
+              * Visible strictly to you only. Never exposed to other users or admins.
             </p>
           </div>
 

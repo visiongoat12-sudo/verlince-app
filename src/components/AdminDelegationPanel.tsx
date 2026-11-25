@@ -32,6 +32,7 @@ import {
 import { UserProfile, AdminPermissions, AdminAuditLog, DealAgreement } from '../types';
 import { 
   isRootOwner, 
+  isProfileRootOwner,
   isUserAdmin, 
   canManageAdmins, 
   canManageKYCEscrow, 
@@ -46,6 +47,7 @@ import {
   updateUserKycStatusInDB,
   subscribeAuditLogs,
   fetchDealsFromDB,
+  fetchPrivateKycForReview,
   saveUserToDB
 } from '../lib/firebase';
 import { AdminBadge } from './AdminBadge';
@@ -107,12 +109,12 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
   useEffect(() => {
     setIsLoadingUsers(true);
     const unsubscribeUsers = subscribeAllUsers((liveUsers) => {
-      // Ensure Root Owner is always represented accurately
       let userList = [...liveUsers];
-      const hasRootInList = userList.some(u => isRootOwner(u.email));
+      const hasRootInList = userList.some(u => isProfileRootOwner(u));
 
       if (!hasRootInList && isRoot) {
-        userList.unshift(currentUser);
+        // Only keep non-email public fields in shared table list
+        userList.unshift({ ...currentUser, email: '', recoveryEmail: '' });
       }
 
       setUsers(userList);
@@ -142,16 +144,17 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
     }
   }, [actionSuccessMessage, actionErrorMessage]);
 
-  // Filtered users list
+  // Filtered users list (strictly searches name, username, and ID—never other users' emails)
   const filteredUsers = users.filter((u) => {
-    const nameMatch = u.name?.toLowerCase().includes(searchQuery.toLowerCase());
-    const emailMatch = u.email?.toLowerCase().includes(searchQuery.toLowerCase());
-    const usernameMatch = u.username?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesSearch = !searchQuery || nameMatch || emailMatch || usernameMatch;
+    const q = searchQuery.toLowerCase();
+    const nameMatch = u.name?.toLowerCase().includes(q);
+    const usernameMatch = u.username?.toLowerCase().includes(q);
+    const idMatch = u.id?.toLowerCase().includes(q);
+    const matchesSearch = !searchQuery || nameMatch || usernameMatch || idMatch;
 
     if (!matchesSearch) return false;
 
-    const isUserRoot = isRootOwner(u.email);
+    const isUserRoot = isProfileRootOwner(u);
     const isUserAdm = isUserRoot || !!u.isAdmin;
 
     if (roleFilter === 'root') return isUserRoot;
@@ -172,14 +175,13 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
   const handleSaveDelegation = async () => {
     if (!editingUser) return;
 
-    // Security Verification: Only authorized delegators
     if (!userCanManageAdmins) {
       setActionErrorMessage('Access denied: You do not possess the `canManageAdmins` authorization.');
       soundEffects.playAlertWarningSound();
       return;
     }
 
-    if (isRootOwner(editingUser.email)) {
+    if (isProfileRootOwner(editingUser)) {
       setActionErrorMessage('Root Owner has immutable tier-0 authority.');
       soundEffects.playAlertWarningSound();
       return;
@@ -193,7 +195,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
         canManageAdmins: formCanManageAdmins,
         canManageKYC_Escrow: formCanManageKYC,
         grantedAt: new Date().toISOString(),
-        grantedBy: currentUser.email || 'Admin',
+        grantedBy: currentUser.name || 'Admin',
       };
 
       await updateUserPermissionsInDB(editingUser.id, {
@@ -201,7 +203,6 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
         permissions: newPermissions,
         updatedByEmail: currentUser.email || 'Admin',
         updatedByName: currentUser.name,
-        targetUserEmail: editingUser.email,
         targetUserName: editingUser.name,
       });
 
@@ -228,7 +229,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
       return;
     }
 
-    if (isRootOwner(revokingUser.email)) {
+    if (isProfileRootOwner(revokingUser)) {
       setActionErrorMessage('Critical Security Constraint: The Root Owner cannot be revoked.');
       soundEffects.playAlertWarningSound();
       return;
@@ -267,7 +268,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
       return;
     }
 
-    if (isRootOwner(targetUser.email)) {
+    if (isProfileRootOwner(targetUser)) {
       setActionErrorMessage('The Root Owner authority cannot be modified.');
       soundEffects.playAlertWarningSound();
       return;
@@ -279,7 +280,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
       ...currentPerms,
       [permissionKey]: !currentPerms[permissionKey],
       grantedAt: new Date().toISOString(),
-      grantedBy: currentUser.email,
+      grantedBy: currentUser.name || 'Admin',
     };
 
     try {
@@ -288,7 +289,6 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
         permissions: updatedPerms,
         updatedByEmail: currentUser.email || 'Admin',
         updatedByName: currentUser.name,
-        targetUserEmail: targetUser.email,
         targetUserName: targetUser.name,
       });
       setActionSuccessMessage(`Updated ${permissionKey} = ${updatedPerms[permissionKey]} for ${targetUser.name}`);
@@ -419,7 +419,9 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
               <div className="text-[10px] text-slate-400 font-mono">Logged in authority:</div>
               <div className="text-xs font-bold text-white flex items-center gap-1.5 justify-end">
                 <span>{currentUser.name}</span>
-                <span className="text-cyan-400 font-mono">({currentUser.email})</span>
+                {currentUser.username && (
+                  <span className="text-cyan-400 font-mono">@{currentUser.username}</span>
+                )}
               </div>
               <div className="text-[10px] text-slate-400 flex items-center gap-1 justify-end mt-0.5">
                 <span>Role Assignment:</span>
@@ -486,7 +488,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
           <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
             <span className="text-[10px] text-cyan-300 font-mono block">Delegated Admins</span>
             <span className="text-lg font-black text-cyan-300">
-              {users.filter(u => u.isAdmin && !isRootOwner(u.email)).length}
+              {users.filter(u => u.isAdmin && !isProfileRootOwner(u)).length}
             </span>
           </div>
 
@@ -610,7 +612,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name, email, or handle..."
+                placeholder="Search by name, @handle, or user ID..."
                 className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 transition"
               />
             </div>
@@ -671,10 +673,11 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                     </tr>
                   ) : (
                     filteredUsers.map((u) => {
-                      const isUserRoot = isRootOwner(u.email);
+                      const isUserRoot = isProfileRootOwner(u);
                       const isUserAdminAccount = isUserRoot || !!u.isAdmin;
                       const hasAdminDelegation = isUserRoot || !!u.permissions?.canManageAdmins;
                       const hasKYCEscrow = isUserRoot || !!u.permissions?.canManageKYC_Escrow;
+                      const isSelfRow = u.id === currentUser.id;
 
                       return (
                         <tr
@@ -699,10 +702,16 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                                       ROOT
                                     </span>
                                   )}
+                                  {isSelfRow && (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold border border-cyan-500/30">
+                                      YOU
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
-                                  <span>{u.email}</span>
-                                  <span className="text-cyan-400/80">@{u.username || 'user'}</span>
+                                  <span className="text-cyan-400/90">@{u.username || 'user'}</span>
+                                  <span className="text-slate-600">•</span>
+                                  <span className="text-slate-500 text-[10px]">ID: {u.id.slice(0, 12)}</span>
                                 </div>
                               </div>
                             </div>
@@ -876,7 +885,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {users.filter(u => u.kycStatus === 'pending' || u.kycData?.legalName).length === 0 ? (
+                  {users.filter(u => u.kycStatus === 'pending' || u.idDocumentName).length === 0 ? (
                     <tr>
                       <td colSpan={5} className="py-6 text-center text-slate-500">
                         No pending KYC applications in the review pipeline.
@@ -884,7 +893,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                     </tr>
                   ) : (
                     users
-                      .filter(u => u.kycStatus === 'pending' || u.kycData?.legalName)
+                      .filter(u => u.kycStatus === 'pending' || u.idDocumentName)
                       .map((u) => (
                         <tr key={u.id} className="hover:bg-white/[0.02]">
                           <td className="py-3 px-3">
@@ -892,17 +901,17 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                               <img src={u.avatar} alt={u.name} className="w-7 h-7 rounded-full object-cover" />
                               <div>
                                 <span className="font-bold text-white block">{u.name}</span>
-                                <span className="text-[10px] text-slate-400 font-mono">{u.email}</span>
+                                <span className="text-[10px] text-cyan-400 font-mono">@{u.username || 'member'} • {u.id.slice(0, 10)}</span>
                               </div>
                             </div>
                           </td>
                           <td className="py-3 px-3 font-mono">
-                            <span className="text-white block">{u.kycData?.idType || 'Govt ID'}</span>
-                            <span className="text-[10px] text-slate-400">{u.kycData?.idNumber || 'Pending number'}</span>
+                            <span className="text-white block">{u.idDocumentName || 'Govt ID Submitted'}</span>
+                            <span className="text-[10px] text-slate-400">Encrypted Private Vault</span>
                           </td>
                           <td className="py-3 px-3 font-mono">
-                            <span className="text-white block">A/C: {u.kycData?.bankAccount || 'None'}</span>
-                            <span className="text-[10px] text-slate-400">IFSC: {u.kycData?.bankIfsc || 'N/A'}</span>
+                            <span className="text-slate-300 block">Private Subcollection</span>
+                            <span className="text-[10px] text-slate-400">Click Inspect to verify</span>
                           </td>
                           <td className="py-3 px-3">
                             <span
@@ -919,9 +928,17 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                           </td>
                           <td className="py-3 px-3 text-right">
                             <button
-                              onClick={() => {
-                                setInspectingKycUser(u);
+                              onClick={async () => {
                                 setShowRejectInput(false);
+                                setInspectingKycUser(u);
+                                const privKyc = await fetchPrivateKycForReview(u.id);
+                                if (privKyc) {
+                                  setInspectingKycUser((prev) =>
+                                    prev && prev.id === u.id
+                                      ? { ...prev, kycData: privKyc.kycData, idDocumentName: privKyc.idDocumentName ?? prev.idDocumentName }
+                                      : prev
+                                  );
+                                }
                               }}
                               className="px-3 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-[11px] font-medium transition"
                             >
@@ -1050,7 +1067,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                           {log.action.replace('_', ' ')}
                         </span>
                         <span className="text-slate-500">•</span>
-                        <span className="text-slate-300">By: {log.actorEmail}</span>
+                        <span className="text-slate-300">By: {log.actorName || 'Admin'}</span>
                       </div>
                       <p className="text-slate-400 mt-0.5">{log.details}</p>
                     </div>
@@ -1095,7 +1112,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
               <img src={editingUser.avatar} alt={editingUser.name} className="w-10 h-10 rounded-full object-cover" />
               <div>
                 <span className="font-bold text-white block">{editingUser.name}</span>
-                <span className="text-xs text-cyan-400 font-mono">{editingUser.email}</span>
+                <span className="text-xs text-cyan-400 font-mono">@{editingUser.username || 'member'} • ID: {editingUser.id.slice(0, 12)}</span>
               </div>
             </div>
 
@@ -1204,7 +1221,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
 
             <h3 className="text-lg font-black text-white">Revoke Delegated Admin Privileges?</h3>
             <p className="text-xs text-slate-400 mt-1">
-              You are about to demote <strong className="text-white">{revokingUser.name}</strong> ({revokingUser.email}) back to a standard member. Their access to the Admin HUD, role assignment, and KYC approvals will be terminated instantly.
+              You are about to demote <strong className="text-white">{revokingUser.name}</strong> (@{revokingUser.username || 'member'}) back to a standard member. Their access to the Admin HUD, role assignment, and KYC approvals will be terminated instantly.
             </p>
 
             <div className="flex items-center justify-end gap-3 mt-6">
@@ -1262,7 +1279,7 @@ export const AdminDelegationPanel: React.FC<AdminDelegationPanelProps> = ({
                 <img src={inspectingKycUser.avatar} alt={inspectingKycUser.name} className="w-12 h-12 rounded-full object-cover" />
                 <div>
                   <span className="font-bold text-white text-sm block">{inspectingKycUser.name}</span>
-                  <span className="text-xs text-purple-400 font-mono">{inspectingKycUser.email}</span>
+                  <span className="text-xs text-purple-400 font-mono">@{inspectingKycUser.username || 'member'} • ID: {inspectingKycUser.id.slice(0, 12)}</span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">Role: {inspectingKycUser.role}</span>
                 </div>
               </div>

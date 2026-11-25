@@ -1,32 +1,66 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
   deleteDoc,
-  onSnapshot, 
-  query, 
+  deleteField,
+  onSnapshot,
+  query,
   where,
-  getDocFromServer 
+  getDocFromServer,
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { CreatorProfile, UserProfile, DealAgreement, ChatMessage, ViewOnceMedia, Channel, AdminPermissions, AdminAuditLog } from '../types';
-import { ROOT_OWNER_EMAIL, isRootOwner, canActorModifyTargetAdmin, canActorRevokeTargetAdmin } from './adminSecurity';
+import {
+  CreatorProfile,
+  UserProfile,
+  DealAgreement,
+  ChatMessage,
+  ViewOnceMedia,
+  Channel,
+  AdminPermissions,
+  AdminAuditLog,
+} from '../types';
+import { isRootOwner, isProfileRootOwner, canActorModifyTargetAdmin } from './adminSecurity';
+import { deleteChunkedMedia } from './mediaUpload';
 
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 // Initialize Firestore with specific database ID if available
-export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+export const db =
+  firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+    ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+    : getFirestore(app);
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
+
+/**
+ * Compute one-way SHA-256 hash of a normalized email address for private lookup index
+ */
+export async function hashEmail(email: string): Promise<string> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return '';
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const encoded = new TextEncoder().encode(normalized);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  // Fallback deterministic FNV-1a hex if crypto.subtle unavailable
+  let h = 2166136261;
+  for (let i = 0; i < normalized.length; i++) {
+    h ^= normalized.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `fnv_${(h >>> 0).toString(16)}`;
+}
 
 /**
  * Verify live connection to Firestore database
@@ -34,7 +68,6 @@ export const auth = getAuth(app);
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log('[Firestore] Live database connection verified successfully.');
     return true;
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
@@ -45,7 +78,6 @@ export async function testFirestoreConnection(): Promise<boolean> {
   }
 }
 
-// Run initial connection test
 testFirestoreConnection();
 
 /**
@@ -65,37 +97,31 @@ export async function cleanupDemoDataFromDB(): Promise<void> {
   const demoDealIds = ['TRW-849201', 'deal-sample', 'deal-001'];
 
   try {
-    // 1. Purge demo creators
     for (const id of demoCreatorIds) {
       const creatorRef = doc(db, 'creators', id);
       const snap = await getDoc(creatorRef);
       if (snap.exists()) {
         await deleteDoc(creatorRef);
-        console.log(`[Firestore] Purged demo creator listing: ${id}`);
       }
     }
 
-    // 2. Purge demo users
     for (const uid of demoUserIds) {
       const demoUserRef = doc(db, 'users', uid);
       const userSnap = await getDoc(demoUserRef);
       if (userSnap.exists()) {
+        await deleteDoc(doc(db, 'users', uid, 'private', 'sensitiveData')).catch(() => {});
         await deleteDoc(demoUserRef);
-        console.log(`[Firestore] Purged demo user: ${uid}`);
       }
     }
 
-    // 3. Purge dummy deals
     for (const did of demoDealIds) {
       const dRef = doc(db, 'deals', did);
       const snap = await getDoc(dRef);
       if (snap.exists()) {
         await deleteDoc(dRef);
-        console.log(`[Firestore] Purged dummy deal: ${did}`);
       }
     }
 
-    // 4. Clean up any deals tagged with TRW-849201 or mock names
     const dealsRef = collection(db, 'deals');
     const dealsSnap = await getDocs(dealsRef);
     for (const dealDoc of dealsSnap.docs) {
@@ -106,7 +132,6 @@ export async function cleanupDemoDataFromDB(): Promise<void> {
         data.senderName?.includes('Aarav Sharma')
       ) {
         await deleteDoc(doc(db, 'deals', dealDoc.id));
-        console.log(`[Firestore] Purged mock deal from collection: ${dealDoc.id}`);
       }
     }
   } catch (err) {
@@ -114,11 +139,10 @@ export async function cleanupDemoDataFromDB(): Promise<void> {
   }
 }
 
-// Automatically clean up legacy demo items in the background
 cleanupDemoDataFromDB();
 
 /**
- * Fetch all creators from the real Firestore database
+ * Fetch all creators from the real Firestore database (no emails ever attached)
  */
 export async function fetchCreatorsFromDB(): Promise<CreatorProfile[]> {
   try {
@@ -126,10 +150,15 @@ export async function fetchCreatorsFromDB(): Promise<CreatorProfile[]> {
     const snapshot = await getDocs(creatorsRef);
     const creators: CreatorProfile[] = [];
     snapshot.forEach((d) => {
-      // Exclude any remaining demo entries
-      if (!d.id.startsWith('creator-kabir') && !d.id.startsWith('creator-ananya') && 
-          !d.id.startsWith('creator-rohan') && !d.id.startsWith('creator-siddharth')) {
-        creators.push({ id: d.id, ...d.data() } as CreatorProfile);
+      if (
+        !d.id.startsWith('creator-kabir') &&
+        !d.id.startsWith('creator-ananya') &&
+        !d.id.startsWith('creator-rohan') &&
+        !d.id.startsWith('creator-siddharth')
+      ) {
+        const raw = d.data() as Record<string, unknown>;
+        const { email: _e, recoveryEmail: _r, ...publicCreator } = raw;
+        creators.push({ id: d.id, ...publicCreator } as CreatorProfile);
       }
     });
     return creators;
@@ -149,9 +178,15 @@ export function subscribeCreators(onUpdate: (creators: CreatorProfile[]) => void
     (snapshot) => {
       const creators: CreatorProfile[] = [];
       snapshot.forEach((d) => {
-        if (!d.id.startsWith('creator-kabir') && !d.id.startsWith('creator-ananya') && 
-            !d.id.startsWith('creator-rohan') && !d.id.startsWith('creator-siddharth')) {
-          creators.push({ id: d.id, ...d.data() } as CreatorProfile);
+        if (
+          !d.id.startsWith('creator-kabir') &&
+          !d.id.startsWith('creator-ananya') &&
+          !d.id.startsWith('creator-rohan') &&
+          !d.id.startsWith('creator-siddharth')
+        ) {
+          const raw = d.data() as Record<string, unknown>;
+          const { email: _e, recoveryEmail: _r, ...publicCreator } = raw;
+          creators.push({ id: d.id, ...publicCreator } as CreatorProfile);
         }
       });
       onUpdate(creators);
@@ -183,17 +218,20 @@ export function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
 }
 
 /**
- * Save or update a creator profile in the Firestore database
+ * Save or update a creator profile in the Firestore database (strictly strips email)
  */
 export async function saveCreatorToDB(creator: CreatorProfile): Promise<void> {
   try {
     const creatorRef = doc(db, 'creators', creator.id);
+    const rawCopy = { ...creator } as Record<string, unknown>;
+    delete rawCopy.email;
+    delete rawCopy.recoveryEmail;
+
     const cleanedData = cleanFirestoreData({
-      ...creator,
-      updatedAt: new Date().toISOString()
+      ...rawCopy,
+      updatedAt: new Date().toISOString(),
     });
     await setDoc(creatorRef, cleanedData, { merge: true });
-    console.log(`[Firestore] Creator saved to database: ${creator.name} (${creator.id})`);
   } catch (error) {
     console.error('[Firestore] Error saving creator:', error);
     throw error;
@@ -207,7 +245,6 @@ export async function deleteCreatorFromDB(creatorId: string): Promise<void> {
   try {
     const creatorRef = doc(db, 'creators', creatorId);
     await deleteDoc(creatorRef);
-    console.log(`[Firestore] Creator removed: ${creatorId}`);
   } catch (error) {
     console.error('[Firestore] Error deleting creator:', error);
     throw error;
@@ -215,16 +252,46 @@ export async function deleteCreatorFromDB(creatorId: string): Promise<void> {
 }
 
 /**
- * Fetch a user profile from Firestore by user ID
+ * Fetch the logged-in user's own profile (merges public /users/{id} + private /users/{id}/private/sensitiveData)
  */
 export async function fetchUserFromDB(userId: string): Promise<UserProfile | null> {
   try {
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
-    if (userSnap.exists()) {
-      return { id: userSnap.id, ...userSnap.data() } as UserProfile;
+    if (!userSnap.exists()) return null;
+
+    const publicData = userSnap.data() as Record<string, any>;
+    let privateData: Record<string, any> = {};
+    try {
+      const privSnap = await getDoc(doc(db, 'users', userId, 'private', 'sensitiveData'));
+      if (privSnap.exists()) {
+        privateData = privSnap.data() as Record<string, any>;
+      }
+    } catch {
+      // ignore if private doc absent
     }
-    return null;
+
+    const email = privateData.email || publicData.email || '';
+    const isRoot = !!publicData.isRootOwner || isRootOwner(email);
+
+    return {
+      ...publicData,
+      id: userSnap.id,
+      email,
+      recoveryEmail: privateData.recoveryEmail || '',
+      kycData: privateData.kycData || publicData.kycData,
+      idDocumentName: privateData.idDocumentName ?? publicData.idDocumentName ?? null,
+      isRootOwner: isRoot,
+      isAdmin: isRoot ? true : !!publicData.isAdmin,
+      permissions: isRoot
+        ? {
+            canManageAdmins: true,
+            canManageKYC_Escrow: true,
+            grantedAt: publicData.permissions?.grantedAt || new Date().toISOString(),
+            grantedBy: 'SYSTEM_ROOT',
+          }
+        : publicData.permissions || { canManageAdmins: false, canManageKYC_Escrow: false },
+    } as UserProfile;
   } catch (error) {
     console.error(`[Firestore] Error fetching user ${userId}:`, error);
     return null;
@@ -232,15 +299,36 @@ export async function fetchUserFromDB(userId: string): Promise<UserProfile | nul
 }
 
 /**
- * Subscribe to real-time updates for a specific user
+ * Fetch private KYC inspection fields ONLY (strictly excludes email & recoveryEmail)
+ */
+export async function fetchPrivateKycForReview(userId: string): Promise<{
+  kycData?: UserProfile['kycData'];
+  idDocumentName?: string | null;
+} | null> {
+  try {
+    const privSnap = await getDoc(doc(db, 'users', userId, 'private', 'sensitiveData'));
+    if (!privSnap.exists()) return null;
+    const priv = privSnap.data() as Record<string, any>;
+    return {
+      kycData: priv.kycData,
+      idDocumentName: priv.idDocumentName ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Subscribe to real-time updates for the logged-in owner's user document
  */
 export function subscribeUser(userId: string, onUpdate: (user: UserProfile | null) => void): () => void {
   const userRef = doc(db, 'users', userId);
   return onSnapshot(
     userRef,
-    (docSnap) => {
+    async (docSnap) => {
       if (docSnap.exists()) {
-        onUpdate({ id: docSnap.id, ...docSnap.data() } as UserProfile);
+        const full = await fetchUserFromDB(docSnap.id);
+        onUpdate(full);
       } else {
         onUpdate(null);
       }
@@ -252,45 +340,99 @@ export function subscribeUser(userId: string, onUpdate: (user: UserProfile | nul
 }
 
 /**
- * Save user profile to Firestore
+ * Save user profile to Firestore using Public/Private subcollection split:
+ * - /users/{uid} holds ONLY non-PII public fields (no email, recoveryEmail, or raw kycData)
+ * - /users/{uid}/private/sensitiveData holds email, recoveryEmail, and kycData
+ * - /email_index/{sha256(email)} holds { userId } for duplicate check & sign-in
  */
 export async function saveUserToDB(user: UserProfile): Promise<void> {
   try {
     const userRef = doc(db, 'users', user.id);
     const normalizedEmail = user.email ? user.email.trim().toLowerCase() : '';
-    const isRoot = isRootOwner(normalizedEmail);
+    const isRoot = !!user.isRootOwner || isRootOwner(normalizedEmail);
 
     const permissions: AdminPermissions = isRoot
       ? {
           canManageAdmins: true,
           canManageKYC_Escrow: true,
           grantedAt: user.permissions?.grantedAt || new Date().toISOString(),
-          grantedBy: 'SYSTEM_ROOT'
+          grantedBy: 'SYSTEM_ROOT',
         }
       : user.permissions || {
           canManageAdmins: false,
-          canManageKYC_Escrow: false
+          canManageKYC_Escrow: false,
         };
 
-    const cleanedUserData = cleanFirestoreData({
-      ...user,
-      email: normalizedEmail,
+    // 1. Public non-PII profile payload
+    const publicPayload = cleanFirestoreData({
+      id: user.id,
+      name: user.name,
       username: user.username ? user.username.trim().toLowerCase() : '',
+      role: user.role,
       isAdmin: isRoot ? true : !!user.isAdmin,
-      isRootOwner: isRoot ? true : !!user.isRootOwner,
-      permissions: permissions,
-      updatedAt: new Date().toISOString()
+      isRootOwner: isRoot,
+      permissions,
+      hasVerifiedBadge: !!user.hasVerifiedBadge,
+      badgePurchasedAt: user.badgePurchasedAt,
+      badgeExpiresAt: user.badgeExpiresAt,
+      avatar: user.avatar,
+      kycStatus: user.kycStatus,
+      walletBalance: user.walletBalance ?? 0,
+      editingApps: user.editingApps,
+      createdAt: user.createdAt || new Date().toISOString(),
+      idDocumentName: user.idDocumentName ?? null,
+      updatedAt: new Date().toISOString(),
     });
-    await setDoc(userRef, cleanedUserData, { merge: true });
 
-    // If the user is an editor, automatically synchronize/create their creator listing
+    await setDoc(
+      userRef,
+      {
+        ...publicPayload,
+        email: deleteField(),
+        recoveryEmail: deleteField(),
+        kycData: deleteField(),
+      },
+      { merge: true }
+    );
+
+    // 2. Private subcollection payload (Owner-only sensitive fields)
+    const privatePayload = cleanFirestoreData({
+      email: normalizedEmail || undefined,
+      recoveryEmail: user.recoveryEmail ? user.recoveryEmail.trim().toLowerCase() : undefined,
+      kycData: user.kycData,
+      idDocumentName: user.idDocumentName ?? null,
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (Object.keys(privatePayload).length > 0) {
+      await setDoc(doc(db, 'users', user.id, 'private', 'sensitiveData'), privatePayload, { merge: true });
+    }
+
+    // 3. Hashed email lookup index (no plaintext email stored)
+    if (normalizedEmail) {
+      const emailHash = await hashEmail(normalizedEmail);
+      if (emailHash) {
+        await setDoc(
+          doc(db, 'email_index', emailHash),
+          {
+            userId: user.id,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
+    }
+
+    // 4. Synchronize creator listing (strictly no email)
     if (user.role === 'editor') {
       const creatorRef = doc(db, 'creators', user.id);
       const cleanedCreatorData = cleanFirestoreData({
         id: user.id,
         userId: user.id,
         name: user.name,
-        username: user.username ? user.username.trim().toLowerCase() : user.name.toLowerCase().replace(/\s+/g, '_'),
+        username: user.username
+          ? user.username.trim().toLowerCase()
+          : user.name.toLowerCase().replace(/\s+/g, '_'),
         avatar: user.avatar,
         role: 'Verified Video Editor & Post-Production Specialist',
         rating: 5.0,
@@ -299,14 +441,13 @@ export async function saveUserToDB(user: UserProfile): Promise<void> {
         tags: ['Video Editing', 'Post-Production'],
         bio: 'Professional freelance video editor on Verilance with protected escrow backing.',
         verifiedPro: user.hasVerifiedBadge,
+        editingApps: user.editingApps,
         dealsCompleted: 0,
         deliveryTime: '24-48 Hours',
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
       await setDoc(creatorRef, cleanedCreatorData, { merge: true });
     }
-
-    console.log(`[Firestore] User saved: ${user.name} (${user.id})`);
   } catch (error) {
     console.error('[Firestore] Error saving user:', error);
     throw error;
@@ -314,45 +455,27 @@ export async function saveUserToDB(user: UserProfile): Promise<void> {
 }
 
 /**
- * Check if an email address is already registered in the database (1 Email = 1 Account restriction)
- * Guarantees strict single-use email enforcement across all accounts.
+ * Check if an email address is already registered via the hashed email_index (never queries plaintext emails)
  */
 export async function checkEmailInDB(email: string, currentUserId?: string): Promise<boolean> {
   try {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) return false;
 
-    const usersRef = collection(db, 'users');
+    const emailHash = await hashEmail(cleanEmail);
+    if (!emailHash) return false;
 
-    // 1. Direct query matching normalized email
-    const q = query(usersRef, where('email', '==', cleanEmail));
-    const snapshot = await getDocs(q);
-
-    for (const d of snapshot.docs) {
-      if (d.id !== currentUserId) {
-        console.log(`[Firestore] Email collision detected for ${cleanEmail} with user doc ${d.id}`);
+    const indexSnap = await getDoc(doc(db, 'email_index', emailHash));
+    if (indexSnap.exists()) {
+      const data = indexSnap.data() as { userId?: string };
+      if (data.userId && data.userId !== currentUserId) {
         return true;
-      }
-    }
-
-    // 2. Secondary comprehensive scan across all user documents
-    // (guarantees prevention of any case-casing, whitespace, or schema differences)
-    const allUsersSnap = await getDocs(usersRef);
-    for (const d of allUsersSnap.docs) {
-      if (d.id !== currentUserId) {
-        const data = d.data();
-        const docEmail = data.email ? String(data.email).trim().toLowerCase() : '';
-        if (docEmail === cleanEmail) {
-          console.log(`[Firestore] Email match found via scan for ${cleanEmail} on doc ${d.id}`);
-          return true;
-        }
       }
     }
 
     return false;
   } catch (error) {
     console.warn('[Firestore] Notice during email uniqueness check:', error);
-    // Offline / fallback check against cached authenticated user in local storage
     try {
       const stored = localStorage.getItem('verilance_auth_user');
       if (stored) {
@@ -361,7 +484,7 @@ export async function checkEmailInDB(email: string, currentUserId?: string): Pro
           return true;
         }
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
     return false;
@@ -393,18 +516,31 @@ export async function checkUsernameInDB(username: string, currentUserId?: string
 }
 
 /**
- * Completely wipes all records across all collections in the Firestore database:
- * - users
- * - creators
- * - deals
- * - messages
- * - channels
- * Guarantees a 100% clean slate (0 users, 0 active deals, 0 profiles).
+ * Completely wipes all records across collections in the Firestore database
  */
 export async function wipeFirestoreDatabase(): Promise<{ success: boolean; deletedCount: number }> {
   try {
     let count = 0;
-    const collectionsToWipe = ['users', 'creators', 'deals', 'messages', 'channels'];
+    // Clear private subcollections for users first
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      for (const uDoc of usersSnap.docs) {
+        await deleteDoc(doc(db, 'users', uDoc.id, 'private', 'sensitiveData')).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+
+    const collectionsToWipe = [
+      'users',
+      'email_index',
+      'creators',
+      'deals',
+      'messages',
+      'channels',
+      'media_chunks',
+      'audit_logs',
+    ];
     for (const collName of collectionsToWipe) {
       try {
         const collRef = collection(db, collName);
@@ -417,7 +553,6 @@ export async function wipeFirestoreDatabase(): Promise<{ success: boolean; delet
         console.warn(`[Firestore] Notice clearing collection ${collName}:`, collErr);
       }
     }
-    console.log(`[Firestore] Database completely wiped. ${count} records deleted. Database is at 0 users, 0 active deals, 0 profiles.`);
     return { success: true, deletedCount: count };
   } catch (error) {
     console.error('[Firestore] Error during complete database wipe:', error);
@@ -426,29 +561,34 @@ export async function wipeFirestoreDatabase(): Promise<{ success: boolean; delet
 }
 
 /**
- * Fetch a user profile from Firestore by either their verified email or unique username
+ * Fetch a signing-in user's profile via hashed email lookup or unique username.
+ * Merges their own /private/sensitiveData document for the sign-in session.
  */
 export async function fetchUserByEmailOrUsername(identifier: string): Promise<UserProfile | null> {
   try {
     const cleanId = identifier.trim().toLowerCase().replace(/^@/, '');
     if (!cleanId) return null;
 
-    const usersRef = collection(db, 'users');
-
-    // 1. Try matching by email
-    const emailQuery = query(usersRef, where('email', '==', cleanId));
-    const emailSnap = await getDocs(emailQuery);
-    if (!emailSnap.empty) {
-      const firstDoc = emailSnap.docs[0];
-      return { id: firstDoc.id, ...firstDoc.data() } as UserProfile;
+    // 1. Try hashed email lookup if it contains '@'
+    if (cleanId.includes('@')) {
+      const emailHash = await hashEmail(cleanId);
+      if (emailHash) {
+        const indexSnap = await getDoc(doc(db, 'email_index', emailHash));
+        if (indexSnap.exists()) {
+          const { userId } = indexSnap.data() as { userId?: string };
+          if (userId) {
+            return await fetchUserFromDB(userId);
+          }
+        }
+      }
     }
 
     // 2. Try matching by username
+    const usersRef = collection(db, 'users');
     const usernameQuery = query(usersRef, where('username', '==', cleanId));
     const usernameSnap = await getDocs(usernameQuery);
     if (!usernameSnap.empty) {
-      const firstDoc = usernameSnap.docs[0];
-      return { id: firstDoc.id, ...firstDoc.data() } as UserProfile;
+      return await fetchUserFromDB(usernameSnap.docs[0].id);
     }
 
     return null;
@@ -508,10 +648,9 @@ export async function saveDealToDB(deal: DealAgreement): Promise<void> {
     const dealRef = doc(db, 'deals', deal.id);
     const cleanedDealData = cleanFirestoreData({
       ...deal,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     });
     await setDoc(dealRef, cleanedDealData, { merge: true });
-    console.log(`[Firestore] Deal persisted: ${deal.id}`);
   } catch (error) {
     console.error('[Firestore] Error saving deal:', error);
     throw error;
@@ -520,7 +659,6 @@ export async function saveDealToDB(deal: DealAgreement): Promise<void> {
 
 /**
  * Real-time Chat Messaging: Broadcast message to Firebase Firestore
- * When User A sends a message or attachment, broadcast it via Firebase so User B sees it on their screen instantly.
  */
 export async function saveMessageToDB(message: ChatMessage, channelId?: string): Promise<void> {
   try {
@@ -531,10 +669,9 @@ export async function saveMessageToDB(message: ChatMessage, channelId?: string):
       id: msgId,
       channelId: channelId || message.channelId || 'global',
       createdAt: message.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     });
     await setDoc(msgRef, cleanedMsg, { merge: true });
-    console.log(`[Firestore] Broadcasted message to real-time chat: ${msgId}`);
   } catch (error) {
     console.error('[Firestore] Error saving message:', error);
     throw error;
@@ -555,14 +692,13 @@ export function subscribeMessages(
       const msgs: ChatMessage[] = [];
       snapshot.forEach((d) => {
         const data = d.data() as ChatMessage;
-        if (!channelId || !data.channelId || data.channelId === channelId || data.channelId === 'global') {
+        if (!channelId || !data.channelId || data.channelId === channelId) {
           msgs.push({ ...data, id: d.id });
         }
       });
-      // Sort messages chronologically
       msgs.sort((a, b) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (parseInt(a.id.replace(/\D/g, ''), 10) || 0);
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (parseInt(b.id.replace(/\D/g, ''), 10) || 0);
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : parseInt(a.id.replace(/\D/g, ''), 10) || 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : parseInt(b.id.replace(/\D/g, ''), 10) || 0;
         return timeA - timeB;
       });
       onUpdate(msgs);
@@ -574,10 +710,7 @@ export function subscribeMessages(
 }
 
 /**
- * Update View-Once Media state in Firestore
- * When recipient opens and closes the media:
- * - Update its Firestore document state to opened: true, isExpired: true
- * - Immediately disable media and display locked "Opened" badge for both sender & receiver
+ * Update View-Once Media state in Firestore & purge chunks on expiry
  */
 export async function updateViewOnceMediaInDB(
   messageId: string,
@@ -589,23 +722,29 @@ export async function updateViewOnceMediaInDB(
     if (snap.exists()) {
       const currentData = snap.data() as ChatMessage;
       const currentMedia = currentData.viewOnceMedia || ({} as ViewOnceMedia);
+      const chunkIdToPurge = currentMedia.chunkedMediaId;
+
       const updatedMedia: ViewOnceMedia = {
         ...currentMedia,
         ...updates,
         opened: updates.opened !== undefined ? updates.opened : true,
         isExpired: updates.isExpired !== undefined ? updates.isExpired : true,
-        url: '', // wipe raw media URL to prevent re-opening
-        openedAt: updates.openedAt || new Date().toISOString()
+        url: '',
+        chunkedMediaId: '',
+        openedAt: updates.openedAt || new Date().toISOString(),
       };
       await setDoc(
         msgRef,
         {
           viewOnceMedia: cleanFirestoreData(updatedMedia),
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         },
         { merge: true }
       );
-      console.log(`[Firestore] View-Once media synced to 'opened: true' for msg ${messageId}`);
+
+      if (chunkIdToPurge) {
+        deleteChunkedMedia(chunkIdToPurge).catch(() => {});
+      }
     }
   } catch (error) {
     console.error(`[Firestore] Error updating view-once media for ${messageId}:`, error);
@@ -625,7 +764,43 @@ export async function saveChannelToDB(channel: Channel): Promise<void> {
 }
 
 /**
- * Fetch all registered users from Firestore for Admin Control Panel
+ * Subscribe to chat channels in real time
+ */
+export function subscribeChannels(onUpdate: (channels: Channel[]) => void): () => void {
+  const chRef = collection(db, 'channels');
+  return onSnapshot(
+    chRef,
+    (snapshot) => {
+      const list: Channel[] = [];
+      snapshot.forEach((d) => {
+        list.push({ id: d.id, ...d.data() } as Channel);
+      });
+      onUpdate(list);
+    },
+    (err) => {
+      console.error('[Firestore] Realtime channels subscription error:', err);
+    }
+  );
+}
+
+function sanitizePublicUserRecord(docId: string, raw: Record<string, any>): UserProfile {
+  const { email: _e, recoveryEmail: _r, kycData: _k, ...publicRest } = raw;
+  const isRoot = !!publicRest.isRootOwner;
+  return {
+    ...publicRest,
+    id: docId,
+    email: '', // Strictly redacted for non-owner queries
+    recoveryEmail: '',
+    isRootOwner: isRoot,
+    isAdmin: isRoot ? true : !!publicRest.isAdmin,
+    permissions: isRoot
+      ? { canManageAdmins: true, canManageKYC_Escrow: true }
+      : publicRest.permissions || { canManageAdmins: false, canManageKYC_Escrow: false },
+  } as UserProfile;
+}
+
+/**
+ * Fetch all registered users (STRICT PRIVACY: never returns email, recoveryEmail, or raw kycData)
  */
 export async function fetchAllUsersFromDB(): Promise<UserProfile[]> {
   try {
@@ -633,17 +808,7 @@ export async function fetchAllUsersFromDB(): Promise<UserProfile[]> {
     const snapshot = await getDocs(usersRef);
     const users: UserProfile[] = [];
     snapshot.forEach((d) => {
-      const data = d.data() as UserProfile;
-      const isRoot = isRootOwner(data.email);
-      users.push({
-        ...data,
-        id: d.id,
-        isRootOwner: isRoot ? true : !!data.isRootOwner,
-        isAdmin: isRoot ? true : !!data.isAdmin,
-        permissions: isRoot
-          ? { canManageAdmins: true, canManageKYC_Escrow: true }
-          : data.permissions || { canManageAdmins: false, canManageKYC_Escrow: false },
-      });
+      users.push(sanitizePublicUserRecord(d.id, d.data()));
     });
     return users;
   } catch (error) {
@@ -653,7 +818,7 @@ export async function fetchAllUsersFromDB(): Promise<UserProfile[]> {
 }
 
 /**
- * Real-time subscription to all registered users for Admin Control Panel
+ * Real-time subscription to all registered users (STRICT PRIVACY: never returns emails)
  */
 export function subscribeAllUsers(onUpdate: (users: UserProfile[]) => void): () => void {
   const usersRef = collection(db, 'users');
@@ -662,17 +827,7 @@ export function subscribeAllUsers(onUpdate: (users: UserProfile[]) => void): () 
     (snapshot) => {
       const users: UserProfile[] = [];
       snapshot.forEach((d) => {
-        const data = d.data() as UserProfile;
-        const isRoot = isRootOwner(data.email);
-        users.push({
-          ...data,
-          id: d.id,
-          isRootOwner: isRoot ? true : !!data.isRootOwner,
-          isAdmin: isRoot ? true : !!data.isAdmin,
-          permissions: isRoot
-            ? { canManageAdmins: true, canManageKYC_Escrow: true }
-            : data.permissions || { canManageAdmins: false, canManageKYC_Escrow: false },
-        });
+        users.push(sanitizePublicUserRecord(d.id, d.data()));
       });
       onUpdate(users);
     },
@@ -683,14 +838,21 @@ export function subscribeAllUsers(onUpdate: (users: UserProfile[]) => void): () 
 }
 
 /**
- * Save an audit log entry to Firestore
+ * Save an audit log entry to Firestore (redacts target email)
  */
 export async function saveAuditLogInDB(log: AdminAuditLog): Promise<void> {
   try {
     const logId = log.id || `audit-${Date.now()}`;
     const logRef = doc(db, 'audit_logs', logId);
-    await setDoc(logRef, cleanFirestoreData({ ...log, id: logId, timestamp: log.timestamp || new Date().toISOString() }));
-    console.log(`[Firestore] Audit log recorded: ${log.action} on ${log.targetUserEmail}`);
+    const { targetUserEmail: _redacted, ...safeLog } = log;
+    await setDoc(
+      logRef,
+      cleanFirestoreData({
+        ...safeLog,
+        id: logId,
+        timestamp: log.timestamp || new Date().toISOString(),
+      })
+    );
   } catch (error) {
     console.error('[Firestore] Error recording audit log:', error);
   }
@@ -708,7 +870,6 @@ export function subscribeAuditLogs(onUpdate: (logs: AdminAuditLog[]) => void): (
       snapshot.forEach((d) => {
         logs.push({ id: d.id, ...d.data() } as AdminAuditLog);
       });
-      // Sort newest first
       logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       onUpdate(logs);
     },
@@ -719,8 +880,7 @@ export function subscribeAuditLogs(onUpdate: (logs: AdminAuditLog[]) => void): (
 }
 
 /**
- * Update Admin Permissions for a user:
- * Stores `isAdmin: true` and `permissions: { canManageAdmins, canManageKYC_Escrow }` in Firestore `users/{uid}/permissions`
+ * Update Admin Permissions for a user
  */
 export async function updateUserPermissionsInDB(
   targetUserId: string,
@@ -729,7 +889,6 @@ export async function updateUserPermissionsInDB(
     permissions: AdminPermissions;
     updatedByEmail: string;
     updatedByName?: string;
-    targetUserEmail?: string;
     targetUserName?: string;
   }
 ): Promise<void> {
@@ -741,12 +900,12 @@ export async function updateUserPermissionsInDB(
       throw new Error(`User ${targetUserId} not found`);
     }
 
-    const userData = snap.data() as UserProfile;
+    const userData = sanitizePublicUserRecord(snap.id, snap.data());
 
-    // Strict Security Validation via Rule Engine
     const actorProfile: Partial<UserProfile> = {
       email: updates.updatedByEmail,
       name: updates.updatedByName,
+      isRootOwner: isRootOwner(updates.updatedByEmail),
     };
 
     const check = canActorModifyTargetAdmin(actorProfile, userData);
@@ -758,35 +917,36 @@ export async function updateUserPermissionsInDB(
       canManageAdmins: !!updates.permissions.canManageAdmins,
       canManageKYC_Escrow: !!updates.permissions.canManageKYC_Escrow,
       grantedAt: new Date().toISOString(),
-      grantedBy: updates.updatedByEmail,
+      grantedBy: updates.updatedByName || 'Admin',
     };
 
     await setDoc(
       userRef,
-      cleanFirestoreData({
-        isAdmin: updates.isAdmin,
-        permissions: updatedPermissions,
-        updatedAt: new Date().toISOString(),
-      }),
+      {
+        ...cleanFirestoreData({
+          isAdmin: updates.isAdmin,
+          permissions: updatedPermissions,
+          updatedAt: new Date().toISOString(),
+        }),
+        email: deleteField(),
+        recoveryEmail: deleteField(),
+        kycData: deleteField(),
+      },
       { merge: true }
     );
 
-    // Record audit log
     await saveAuditLogInDB({
       id: `audit-${Date.now()}`,
       action: updates.isAdmin ? 'promote_admin' : 'revoke_admin',
       actorEmail: updates.updatedByEmail,
       actorName: updates.updatedByName || 'Admin',
       targetUserId,
-      targetUserEmail: updates.targetUserEmail || userData.email || '',
       targetUserName: updates.targetUserName || userData.name,
       details: updates.isAdmin
-        ? `Delegated Admin permissions updated: canManageAdmins=${updatedPermissions.canManageAdmins}, canManageKYC_Escrow=${updatedPermissions.canManageKYC_Escrow}`
-        : 'Admin access demoted/revoked',
+        ? `Delegated Admin permissions updated for ${userData.name} (@${userData.username || 'user'}): canManageAdmins=${updatedPermissions.canManageAdmins}, canManageKYC_Escrow=${updatedPermissions.canManageKYC_Escrow}`
+        : `Admin access demoted/revoked for ${userData.name} (@${userData.username || 'user'})`,
       timestamp: new Date().toISOString(),
     });
-
-    console.log(`[Firestore] Updated permissions for user ${targetUserId}:`, updatedPermissions);
   } catch (error) {
     console.error(`[Firestore] Error updating permissions for ${targetUserId}:`, error);
     throw error;
@@ -794,8 +954,7 @@ export async function updateUserPermissionsInDB(
 }
 
 /**
- * 1-Click Revoke Admin Access for Root Owner:
- * Immediately demotes a delegated admin back to a standard user
+ * 1-Click Revoke Admin Access for Root Owner
  */
 export async function revokeAdminAccessInDB(
   targetUserId: string,
@@ -810,40 +969,39 @@ export async function revokeAdminAccessInDB(
       throw new Error(`User ${targetUserId} not found`);
     }
 
-    const userData = snap.data() as UserProfile;
-    if (isRootOwner(userData.email)) {
+    const userData = sanitizePublicUserRecord(snap.id, snap.data());
+    if (isProfileRootOwner(userData)) {
       throw new Error('Security violation: The Root Owner cannot be revoked.');
     }
 
     await setDoc(
       userRef,
-      cleanFirestoreData({
-        isAdmin: false,
-        permissions: {
-          canManageAdmins: false,
-          canManageKYC_Escrow: false,
-          grantedAt: undefined,
-          grantedBy: undefined,
-        },
-        updatedAt: new Date().toISOString(),
-      }),
+      {
+        ...cleanFirestoreData({
+          isAdmin: false,
+          permissions: {
+            canManageAdmins: false,
+            canManageKYC_Escrow: false,
+          },
+          updatedAt: new Date().toISOString(),
+        }),
+        email: deleteField(),
+        recoveryEmail: deleteField(),
+        kycData: deleteField(),
+      },
       { merge: true }
     );
 
-    // Record audit log
     await saveAuditLogInDB({
       id: `audit-${Date.now()}`,
       action: 'revoke_admin',
       actorEmail: revokedByEmail,
       actorName: revokedByName || 'Root Owner',
       targetUserId,
-      targetUserEmail: userData.email || '',
       targetUserName: userData.name,
       details: `1-Click Revocation: Demoted delegated admin ${userData.name} (@${userData.username || 'user'}) back to standard role.`,
       timestamp: new Date().toISOString(),
     });
-
-    console.log(`[Firestore] Successfully revoked admin access for user: ${targetUserId}`);
   } catch (error) {
     console.error(`[Firestore] Error revoking admin access for ${targetUserId}:`, error);
     throw error;
@@ -865,14 +1023,28 @@ export async function updateUserKycStatusInDB(
     const snap = await getDoc(userRef);
     if (!snap.exists()) return;
 
-    const currentData = snap.data() as UserProfile;
-    const currentKycData = currentData.kycData || {};
+    const currentData = sanitizePublicUserRecord(snap.id, snap.data());
+    const privSnap = await getDoc(doc(db, 'users', targetUserId, 'private', 'sensitiveData'));
+    const currentKycData = privSnap.exists() ? (privSnap.data()?.kycData || {}) : {};
 
     await setDoc(
       userRef,
+      {
+        ...cleanFirestoreData({
+          kycStatus: status,
+          hasVerifiedBadge: status === 'verified',
+          updatedAt: new Date().toISOString(),
+        }),
+        email: deleteField(),
+        recoveryEmail: deleteField(),
+        kycData: deleteField(),
+      },
+      { merge: true }
+    );
+
+    await setDoc(
+      doc(db, 'users', targetUserId, 'private', 'sensitiveData'),
       cleanFirestoreData({
-        kycStatus: status,
-        hasVerifiedBadge: status === 'verified',
         kycData: {
           ...currentKycData,
           reviewedAt: new Date().toISOString(),
@@ -883,24 +1055,20 @@ export async function updateUserKycStatusInDB(
       { merge: true }
     );
 
-    // Record audit log
     await saveAuditLogInDB({
       id: `audit-${Date.now()}`,
       action: status === 'verified' ? 'kyc_approved' : 'kyc_rejected',
       actorEmail: reviewerEmail,
       actorName: reviewerName || 'Admin Reviewer',
       targetUserId,
-      targetUserEmail: currentData.email || '',
       targetUserName: currentData.name,
-      details: `KYC submission marked as ${status.toUpperCase()}${rejectionReason ? `: ${rejectionReason}` : ''}`,
+      details: `KYC submission for ${currentData.name} (@${currentData.username || 'user'}) marked as ${status.toUpperCase()}${
+        rejectionReason ? `: ${rejectionReason}` : ''
+      }`,
       timestamp: new Date().toISOString(),
     });
-
-    console.log(`[Firestore] Updated KYC status for user ${targetUserId} to ${status}`);
   } catch (error) {
     console.error(`[Firestore] Error updating KYC status for ${targetUserId}:`, error);
     throw error;
   }
 }
-
-

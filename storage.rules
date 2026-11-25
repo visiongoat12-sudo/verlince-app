@@ -1,0 +1,43 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // 5 GB = 5,368,709,120 bytes
+    function under5GB() {
+      return request.resource != null && request.resource.size <= 5368709120;
+    }
+
+    // 500 MB = 524,288,000 bytes
+    function under500MB() {
+      return request.resource != null && request.resource.size <= 524288000;
+    }
+
+    // Private Escrow Master Vault (up to 5 GB deliverables & final master files)
+    // Master download is strictly locked until the deal status in Firestore is 'released'
+    match /escrow_vault/{dealId}/{fileName} {
+      allow create, update: if isSignedIn() && under5GB();
+      allow read: if isSignedIn()
+        && firestore.exists(/databases/(default)/documents/deals/$(dealId))
+        && firestore.get(/databases/(default)/documents/deals/$(dealId)).data.status == 'released';
+      allow delete: if isSignedIn();
+    }
+
+    // Lightweight Watermarked Stream Previews (separate from 5 GB Master Vault)
+    match /escrow_previews/{dealId}/{fileName} {
+      allow create, update: if isSignedIn() && under500MB();
+      allow read: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    // Chat Media Attachments (supports up to 500 MB standard or 5 GB large-file transfers)
+    match /chat_media/{channelId}/{fileName} {
+      allow create, update: if isSignedIn() && under5GB();
+      allow read: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+  }
+}

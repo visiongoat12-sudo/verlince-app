@@ -37,7 +37,7 @@ import {
   Camera,
   Play
 } from 'lucide-react';
-import { CreatorProfile, UserRole } from '../types';
+import { CreatorProfile, UserProfile, UserRole } from '../types';
 import { VerilanceLogo } from './VerilanceLogo';
 import { 
   subscribeCreators, 
@@ -54,8 +54,9 @@ import { AnimatedCounter } from './AnimatedCounter';
 interface MarketplaceHomeProps {
   onOpenDealModal: () => void;
   onOpenProfile: () => void;
-  onOpenChat: (talentName?: string) => void;
+  onOpenChat: (target?: string | { id?: string; userId?: string; name: string; username?: string; avatar?: string }) => void;
   currentUserRole: UserRole;
+  currentUser?: UserProfile | null;
   onToggleRole: () => void;
   onOpenWhyVerilance?: () => void;
 }
@@ -65,6 +66,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
   onOpenProfile,
   onOpenChat,
   currentUserRole,
+  currentUser,
   onToggleRole,
   onOpenWhyVerilance,
 }) => {
@@ -299,10 +301,10 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                 if (onOpenWhyVerilance) onOpenWhyVerilance();
               }}
               className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[11px] font-semibold transition cursor-pointer"
-              title="Click to see why VERILANCE 3% Escrow protects you"
+              title="Click to see why VERILANCE 2% Escrow protects you"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-              <span>3% Transparent Escrow</span>
+              <span>2% Transparent Escrow</span>
               <Sparkles className="w-3 h-3 text-cyan-400" />
             </button>
 
@@ -1087,6 +1089,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                           soundEffects.playTabClick();
                           setSelectedPfpUser({
                             id: talent.id,
+                            userId: talent.userId,
                             name: talent.name,
                             username: talent.username,
                             avatar: talent.avatar,
@@ -1125,6 +1128,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
                               soundEffects.playTabClick();
                               setSelectedPfpUser({
                                 id: talent.id,
+                                userId: talent.userId,
                                 name: talent.name,
                                 username: talent.username,
                                 avatar: talent.avatar,
@@ -1254,8 +1258,16 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => onOpenChat(talent.name)}
-                      className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-semibold text-slate-200 hover:text-white transition flex items-center gap-1.5"
+                      onClick={() =>
+                        onOpenChat({
+                          id: talent.id,
+                          userId: talent.userId,
+                          name: talent.name,
+                          username: talent.username,
+                          avatar: talent.avatar,
+                        })
+                      }
+                      className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-semibold text-slate-200 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
                     >
                       <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
                       <span>Message</span>
@@ -1512,6 +1524,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
         isOpen={!!selectedPfpUser}
         onClose={() => setSelectedPfpUser(null)}
         user={selectedPfpUser}
+        currentUser={currentUser}
         onOpenChat={onOpenChat}
         onOpenDeal={() => onOpenDealModal()}
       />

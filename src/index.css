@@ -303,4 +303,11 @@ input, select, textarea, button {
   transform: translate3d(0, 0, 0) scale(1);
 }
 
-
+/* Anti-Capture Print Shield for Protected View Once & Watermarked Previews */
+@media print {
+  #view-once-modal-overlay,
+  #watermarked-work-preview-card {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}

@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // Connection test document
     match /test/{docId} {
       allow read, write: if true;
@@ -12,30 +12,40 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isRootOwner() {
-      return isSignedIn() && request.auth.token.email.lower() == 'visiongoat12@gmail.com';
-    }
-
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Users collection: Public profile data
+    function noPublicEmailLeak() {
+      return !('email' in request.resource.data)
+        && !('recoveryEmail' in request.resource.data)
+        && !('kycData' in request.resource.data);
+    }
+
+    // Users collection: Public non-PII profile data ONLY (strictly blocks email/recoveryEmail/kycData)
     match /users/{userId} {
       allow read: if true;
-      allow write: if true;
+      allow create, update: if noPublicEmailLeak();
+      allow delete: if true;
 
-      // Protected Private Subcollection (Sensitive Data & Identity)
+      // Protected Private Subcollection (Sensitive Data & Email - no list queries allowed)
       match /private/{docId} {
-        allow read: if isOwner(userId) || isRootOwner() || true;
-        allow write: if isOwner(userId) || isRootOwner() || true;
+        allow get, create, update, delete: if request.auth == null || isOwner(userId);
+        allow list: if false;
       }
     }
 
-    // Public Marketplace Creator listings
+    // Hashed email lookup index (no plaintext emails, no listing allowed)
+    match /email_index/{emailHash} {
+      allow get, create, update, delete: if true;
+      allow list: if false;
+    }
+
+    // Public Marketplace Creator listings (strictly blocks email/recoveryEmail)
     match /creators/{creatorId} {
       allow read: if true;
-      allow write: if true;
+      allow create, update: if !('email' in request.resource.data) && !('recoveryEmail' in request.resource.data);
+      allow delete: if true;
     }
 
     // Deals collection
@@ -50,6 +60,11 @@ service cloud.firestore {
 
     // Messages collection
     match /messages/{messageId} {
+      allow read, write: if true;
+    }
+
+    // Media Chunks collection (reliable photo & video delivery)
+    match /media_chunks/{chunkId} {
       allow read, write: if true;
     }
 

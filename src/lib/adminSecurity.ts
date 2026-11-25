@@ -25,12 +25,17 @@ export function isRootOwner(email?: string | null): boolean {
   return email.trim().toLowerCase() === ROOT_OWNER_EMAIL.toLowerCase();
 }
 
+export function isProfileRootOwner(user?: SafeUserReference | null): boolean {
+  if (!user) return false;
+  return !!user.isRootOwner || isRootOwner(user.email);
+}
+
 /**
  * Determines whether a given user profile is an Admin (either Root Owner or Delegated Admin)
  */
 export function isUserAdmin(user?: SafeUserReference | null): boolean {
   if (!user) return false;
-  if (isRootOwner(user.email)) return true;
+  if (isProfileRootOwner(user)) return true;
   return !!user.isAdmin;
 }
 
@@ -42,7 +47,7 @@ export function isUserAdmin(user?: SafeUserReference | null): boolean {
  */
 export function canManageAdmins(user?: SafeUserReference | null): boolean {
   if (!user) return false;
-  if (isRootOwner(user.email)) return true;
+  if (isProfileRootOwner(user)) return true;
   return !!(user.isAdmin && user.permissions?.canManageAdmins);
 }
 
@@ -54,7 +59,7 @@ export function canManageAdmins(user?: SafeUserReference | null): boolean {
  */
 export function canManageKYCEscrow(user?: SafeUserReference | null): boolean {
   if (!user) return false;
-  if (isRootOwner(user.email)) return true;
+  if (isProfileRootOwner(user)) return true;
   return !!(user.isAdmin && user.permissions?.canManageKYC_Escrow);
 }
 
@@ -68,7 +73,7 @@ export function getAdminTier(user?: SafeUserReference | null): {
   canDelegate: boolean;
   canKYC: boolean;
 } {
-  if (isRootOwner(user?.email)) {
+  if (isProfileRootOwner(user)) {
     return {
       tierName: 'Permanent Root Owner',
       badgeLabel: 'Root Owner',
@@ -141,14 +146,14 @@ export function canActorModifyTargetAdmin(
   }
 
   // 1. Root Owner Immunity
-  if (isRootOwner(target.email)) {
+  if (isProfileRootOwner(target)) {
     return {
       allowed: false,
-      reason: 'Root Owner Immunity: The permanent Root Owner (visiongoat12@gmail.com) has immutable tier-0 custody.',
+      reason: 'Root Owner Immunity: The permanent Root Owner has immutable tier-0 custody.',
     };
   }
 
-  const actorIsRoot = isRootOwner(actor.email);
+  const actorIsRoot = isProfileRootOwner(actor);
 
   // 2. Self-Revocation & Self-Modification Block
   if (isSelfAccount(actor, target)) {
@@ -161,7 +166,7 @@ export function canActorModifyTargetAdmin(
   }
 
   // 3. If target is already an Admin, only Root Owner can modify them
-  const targetIsAdmin = target.isAdmin || isRootOwner(target.email);
+  const targetIsAdmin = target.isAdmin || isProfileRootOwner(target);
   if (targetIsAdmin && !actorIsRoot) {
     return {
       allowed: false,
@@ -192,7 +197,7 @@ export function canActorRevokeTargetAdmin(
   }
 
   // Root Owner Immunity
-  if (isRootOwner(target.email)) {
+  if (isProfileRootOwner(target)) {
     return {
       allowed: false,
       reason: 'Critical Security Constraint: The Root Owner cannot be revoked under any circumstances.',
@@ -200,10 +205,10 @@ export function canActorRevokeTargetAdmin(
   }
 
   // Only Root Owner can revoke
-  if (!isRootOwner(actor.email)) {
+  if (!isProfileRootOwner(actor)) {
     return {
       allowed: false,
-      reason: 'Security Restriction: Only the permanent Root Owner (visiongoat12@gmail.com) possesses revocation authority.',
+      reason: 'Security Restriction: Only the permanent Root Owner possesses revocation authority.',
     };
   }
 

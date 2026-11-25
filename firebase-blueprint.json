@@ -2,14 +2,12 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "Registered user profile on Verilance platform",
+      "description": "Public non-PII user profile on Verilance platform (strictly excludes emails)",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
         "username": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "recoveryEmail": { "type": "string" },
         "role": { "type": "string", "enum": ["creator", "editor"] },
         "isAdmin": { "type": "boolean" },
         "isRootOwner": { "type": "boolean" },
@@ -23,26 +21,34 @@
           }
         },
         "avatar": { "type": "string" },
-        "kycStatus": { "type": "string", "enum": ["unverified", "pending", "verified"] },
-        "idDocumentName": { "type": "string" },
+        "kycStatus": { "type": "string", "enum": ["unverified", "pending", "verified", "rejected"] },
         "hasVerifiedBadge": { "type": "boolean" },
         "walletBalance": { "type": "number" },
-        "bio": { "type": "string" },
+        "editingApps": { "type": "array" },
         "createdAt": { "type": "string" }
       },
-      "required": ["id", "name", "username", "email", "role"]
+      "required": ["id", "name", "username", "role"]
     },
     "UserSensitiveData": {
       "title": "UserSensitiveData",
-      "description": "Protected private identity and sensitive contact data",
+      "description": "Protected private identity and sensitive contact data accessible only to owner",
       "type": "object",
       "properties": {
         "email": { "type": "string", "format": "email" },
         "recoveryEmail": { "type": "string" },
-        "phoneNumber": { "type": "string" },
-        "bankDetails": { "type": "object" },
-        "kycIdNumber": { "type": "string" }
+        "kycData": { "type": "object" },
+        "idDocumentName": { "type": "string" }
       }
+    },
+    "EmailIndex": {
+      "title": "EmailIndex",
+      "description": "One-way SHA-256 email hash to userId lookup index without storing plaintext emails",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId"]
     },
     "Creator": {
       "title": "Creator",
@@ -70,18 +76,21 @@
     },
     "Deal": {
       "title": "Deal",
-      "description": "Escrow deal agreement between a client and creator",
+      "description": "Structured escrow deal agreement with milestones, deliverables, and revision limits",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "creatorId": { "type": "string" },
-        "clientId": { "type": "string" },
         "title": { "type": "string" },
+        "serviceType": { "type": "string" },
         "amount": { "type": "number" },
+        "commissionFee": { "type": "number" },
+        "netPayout": { "type": "number" },
         "status": { "type": "string" },
+        "revisionLimit": { "type": "number" },
+        "revisionsUsed": { "type": "number" },
         "createdAt": { "type": "string" }
       },
-      "required": ["id", "creatorId", "clientId", "amount", "status"]
+      "required": ["id", "title", "amount", "status"]
     },
     "Message": {
       "title": "Message",
@@ -109,19 +118,38 @@
         "subtitle": { "type": "string" },
         "avatar": { "type": "string" },
         "isGroup": { "type": "boolean" },
+        "participantId": { "type": "string" },
+        "participantUsername": { "type": "string" },
         "lastActive": { "type": "string" }
       },
       "required": ["id", "name"]
+    },
+    "MediaChunk": {
+      "title": "MediaChunk",
+      "description": "Chunked media payloads for reliable photo/video delivery",
+      "type": "object",
+      "properties": {
+        "mediaId": { "type": "string" },
+        "chunkIndex": { "type": "number" },
+        "totalChunks": { "type": "number" },
+        "mimeType": { "type": "string" },
+        "data": { "type": "string" }
+      },
+      "required": ["mediaId", "totalChunks"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
-      "description": "User profile collection stored by user ID"
+      "description": "Public non-PII user profile collection"
     },
     "/users/{userId}/private/{docId}": {
       "schema": "UserSensitiveData",
-      "description": "Protected private identity data accessible strictly by account owner and Root Owner"
+      "description": "Protected private identity data accessible strictly by account owner"
+    },
+    "/email_index/{emailHash}": {
+      "schema": "EmailIndex",
+      "description": "Hashed email lookup index for sign-in and duplicate detection"
     },
     "/creators/{creatorId}": {
       "schema": "Creator",
@@ -138,6 +166,10 @@
     "/channels/{channelId}": {
       "schema": "Channel",
       "description": "Chat conversation channels"
+    },
+    "/media_chunks/{chunkId}": {
+      "schema": "MediaChunk",
+      "description": "Chunked media storage for reliable photo and video delivery"
     }
   }
 }

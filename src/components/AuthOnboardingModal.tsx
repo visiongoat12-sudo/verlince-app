@@ -996,7 +996,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                       {customAvatarUrl ? 'Custom Image Uploaded' : 'Upload Custom Profile Picture'}
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      {customAvatarUrl ? 'Using custom photo instead of default avatar' : 'PNG, JPG or SVG (Max 5MB)'}
+                      {customAvatarUrl ? 'Using custom photo instead of default avatar' : 'PNG, JPG or SVG • Auto-optimized'}
                     </span>
                   </div>
                 </div>
@@ -1161,7 +1161,7 @@ export const AuthOnboardingModal: React.FC<AuthOnboardingModalProps> = ({
                     {idDocName || 'Aadhaar / PAN / Government Photo ID'}
                   </p>
                   <p className="text-[11px] text-slate-400">
-                    {idDocName ? '✅ Cryptographic hash verified' : 'Upload PDF, PNG, or JPG (max 10MB)'}
+                    {idDocName ? '✅ Cryptographic hash verified' : 'Upload PDF, PNG, or JPG • End-to-end encrypted'}
                   </p>
                 </div>
               </div>

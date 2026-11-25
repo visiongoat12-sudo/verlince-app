@@ -531,7 +531,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     {idDocName ? idDocName : 'Upload Aadhaar Card / PAN Card (PDF/PNG)'}
                   </p>
                   <p className="text-[11px] text-slate-400">
-                    {idDocName ? '✅ Verification Passed — Anti-Fraud Hash Matched' : 'Max 10MB • End-to-end encrypted'}
+                    {idDocName ? '✅ Verification Passed — Anti-Fraud Hash Matched' : 'Supports PDF, PNG, JPG • End-to-end encrypted'}
                   </p>
                 </div>
               </div>

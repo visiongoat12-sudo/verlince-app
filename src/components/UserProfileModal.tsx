@@ -27,9 +27,9 @@ import { EditingAppsSelector } from './EditingAppsSelector';
 
 export interface UserPfpTarget {
   id?: string;
+  userId?: string;
   name?: string;
   username?: string;
-  email?: string;
   avatar?: string;
   role?: string;
   bio?: string;
@@ -55,7 +55,7 @@ interface UserProfileModalProps {
   onClose: () => void;
   user: UserPfpTarget | null;
   currentUser?: UserProfile | null;
-  onOpenChat?: (userName: string) => void;
+  onOpenChat?: (target: { id?: string; userId?: string; name: string; username?: string; avatar?: string }) => void;
   onOpenDeal?: (prefill: { freelancerName?: string; serviceType?: string; amount?: number }) => void;
 }
 
@@ -71,9 +71,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   if (!isOpen || !user) return null;
 
-  const isSelf = currentUser && (
-    (user.id && user.id === currentUser.id) ||
-    (user.email && currentUser.email && user.email.toLowerCase() === currentUser.email.toLowerCase())
+  const isSelf = !!(
+    currentUser &&
+    ((user.id && user.id === currentUser.id) ||
+      (user.userId && user.userId === currentUser.id) ||
+      (user.username && currentUser.username && user.username.toLowerCase() === currentUser.username.toLowerCase()))
   );
 
   const displayName = user.name || 'VERILANCE Member';
@@ -101,7 +103,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     soundEffects.playNavTabClick();
     onClose();
     if (onOpenChat && user.name) {
-      onOpenChat(user.name);
+      onOpenChat({
+        id: user.id,
+        userId: user.userId,
+        name: user.name,
+        username: user.username,
+        avatar: user.avatar,
+      });
     }
   };
 

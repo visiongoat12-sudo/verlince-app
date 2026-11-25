@@ -1,7 +1,7 @@
 import React from 'react';
 import { Crown, Shield, ShieldCheck, Check, Sparkles } from 'lucide-react';
 import { UserProfile } from '../types';
-import { isRootOwner, getAdminTier } from '../lib/adminSecurity';
+import { isProfileRootOwner, getAdminTier } from '../lib/adminSecurity';
 
 interface AdminBadgeProps {
   user?: {
@@ -25,7 +25,7 @@ export const AdminBadge: React.FC<AdminBadgeProps> = ({
 }) => {
   if (!user) return null;
 
-  const isRoot = isRootOwner(user.email);
+  const isRoot = isProfileRootOwner(user);
   const isAdmin = isRoot || !!user.isAdmin;
 
   if (!isAdmin) return null;
@@ -43,7 +43,7 @@ export const AdminBadge: React.FC<AdminBadgeProps> = ({
               ? 'px-3.5 py-1.5 text-xs bg-gradient-to-r from-amber-500/30 via-yellow-400/25 to-orange-500/30 text-amber-200 border border-amber-400/60 shadow-amber-500/30'
               : 'px-2.5 py-1 text-[10px] bg-gradient-to-r from-amber-500/25 via-yellow-500/20 to-orange-500/25 text-amber-300 border border-amber-400/50 shadow-amber-500/20'
           }`}
-          title="Root Owner: visiongoat12@gmail.com (Permanent Highest Authority Tier)"
+          title="Permanent Root Owner (Tier-0 Authority)"
         >
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
